@@ -52,9 +52,9 @@ export function openTripForm(trip) {
         <div style="display:flex;gap:8px;margin-top:10px"><input id="tm-new" placeholder="新成員的名字"><button type="button" class="btn small secondary" id="tm-add">＋ 加入</button></div>
         <div class="hint">新成員會加進帳本，頭像可以之後在「帳本 → 成員」設定。</div></div>
       <details class="field" ${isNew ? '' : 'open'}><summary class="label">匯率設定（選填）</summary>
-        <div class="field" style="margin-top:8px"><label for="t-srate">結算匯率（1 外幣 = ? 台幣）</label>
-          <input id="t-srate" name="settleRate" inputmode="decimal" value="${t.settleRate ?? ''}" placeholder="沒填就用換匯紀錄的平均匯率">
-          <div class="hint">選「全換台幣／全換外幣」結算時使用，例如整趟換匯的平均匯率。</div></div>
+        <div class="field" style="margin-top:8px"><label for="t-srate">預設匯率（1 外幣 = ? 台幣）</label>
+          <input id="t-srate" name="settleRate" inputmode="decimal" value="${t.settleRate ?? ''}" placeholder="選填">
+          <div class="hint">旅伴沒有自己的換匯紀錄、也沒手動設定匯率時用這個。每個人的匯率可以在「換匯」頁設定。</div></div>
         <div class="field"><label for="t-rate">刷卡預估匯率（1 外幣 = ? 台幣）</label>
           <input id="t-rate" name="estRate" inputmode="decimal" value="${t.estRate ?? ''}" placeholder="例如 0.215">
           <div class="hint">刷卡還沒出帳時，用來估算約合台幣。</div></div>
@@ -221,6 +221,81 @@ export function openMemberForm(id, { toTrip = null } = {}) {
 }
 
 /* ---------- 新增 / 編輯支出 ---------- */
+/* ---------- 分類自動建議 ---------- */
+const CAT_WORDS = [
+  ['stay', /(飯店|酒店|旅館|旅店|民宿|住宿|青旅|hotel|hostel|inn\b|airbnb|ryokan|agoda|booking|ホテル|旅館|숙소|호텔)/i],
+  ['transport', /(地鐵|捷運|電車|新幹線|高鐵|火車|\bjr\b|metro|subway|\bmrt\b|\bbts\b|bus|巴士|公車|客運|計程車|taxi|uber|grab|機場|airport|車票|交通|加油|停車|租車|渡輪|ferry|西瓜卡|suica|icoca|pasmo|機票|航空|airline|タクシー|電車|버스|지하철|택시)/i],
+  ['fun', /(門票|入場|樂園|迪士尼|disney|usj|環球影城|博物館|美術館|museum|tour|一日遊|體驗|spa|按摩|massage|溫泉|onsen|展覽|演唱會|ticket|扭蛋|gacha|kkday|klook|水族館|動物園|纜車|觀景台)/i],
+  ['shopping', /(藥妝|松本清|マツモトキヨシ|matsukiyo|sugi|大國|daikoku|唐吉|驚安|don\s*quijote|ドン|uniqlo|\bgu\b|loft|3coins|無印|muji|百貨|outlet|伴手禮|紀念品|超市|supermarket|mall|購物|bic\s*camera|yodobashi|電器|藥局|watsons|屈臣氏|boots|olive\s*young|daiso|大創|ハンズ|hands|パルコ|parco)/i],
+  ['food', /(餐|飯|麵|拉麵|壽司|燒肉|咖啡|cafe|coffee|starbucks|星巴克|早餐|午餐|晚餐|宵夜|居酒屋|甜點|飲料|奶茶|啤酒|食堂|麥當勞|mcdonald|kfc|吉野家|一蘭|ramen|sushi|restaurant|bakery|麵包|便當|火鍋|烤肉|小吃|夜市|ラーメン|カフェ|식당|카페)/i],
+];
+export function suggestCategory(title) {
+  const t = (title || '').trim();
+  if (!t) return null;
+  // 先看帳本裡有沒有同名的項目用過什麼分類（越近的越優先）
+  const norm = (x) => (x || '').normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  const key = norm(t);
+  let best = null;
+  for (const d of allTrips()) {
+    for (const e of d.expenses) {
+      if (e.category && norm(e.title) === key && (!best || (e.createdAt || 0) > (best.createdAt || 0))) best = e;
+    }
+  }
+  if (best) return { cat: best.category, from: 'history' };
+  for (const [cat, re] of CAT_WORDS) if (re.test(t)) return { cat, from: 'keyword' };
+  return null;
+}
+
+/* ---------- 貼上清單：一行一筆「品名 金額」 ---------- */
+export function parseItemList(text, members, defaultOwner) {
+  const out = [];
+  let owner = defaultOwner;
+  const byName = new Map(members.map((m) => [m.name.toLowerCase(), m.id]));
+  for (let line of String(text || '').split(/\r?\n/)) {
+    line = line.normalize('NFKC').trim();
+    if (!line) continue;
+    // 「Tim:」這種單獨一行的名字 → 之後的品項都算這個人的
+    const head = line.replace(/[:：]\s*$/, '').trim().toLowerCase();
+    if (byName.has(head)) { owner = byName.get(head); continue; }
+    const m = line.match(/^(.*?)[\s:：,，、=\-x×*@]*[¥￥$€£₩฿\\]?\s*(-?\d[\d,]*(?:\.\d+)?)\s*(?:円|元|원|đ|[A-Z]{3})?\s*$/i);
+    if (!m) continue;
+    const name = m[1].replace(/[\s:：,，、=\-x×*@]+$/, '').trim();
+    const amount = parseFloat(m[2].replace(/,/g, ''));
+    if (!name || !isFinite(amount) || amount === 0) continue;
+    out.push({ name: name.slice(0, 60), nameZh: '', amount, owners: owner ? [owner] : [] });
+  }
+  return out;
+}
+function openPasteItems(members, defaultOwner, onDone) {
+  const html = `
+    <p class="small muted" style="margin-top:0">一行一筆，品名在前、金額在後，例如：</p>
+    <pre class="paste-example">WAKAMOTO 7923
+龍角散 1121
+Curel 759
+小美：
+KATE唇膏 1500</pre>
+    <p class="small muted">單獨一行寫旅伴的名字（例如「小美：」），下面的品項就會算給她；沒寫的算給付款人。</p>
+    <textarea id="paste-text" rows="9" placeholder="把清單貼在這裡"></textarea>
+    <div class="paste-preview small muted"></div>
+    <button class="btn" type="button" id="paste-ok" style="margin-top:12px">帶入品項</button>`;
+  openSheet('貼上品項清單', html, (root) => {
+    const ta = $('#paste-text', root);
+    const prev = () => {
+      const list = parseItemList(ta.value, members, defaultOwner);
+      $('.paste-preview', root).textContent = list.length ? `辨識出 ${list.length} 項，合計 ${list.reduce((a, x) => a + x.amount, 0).toLocaleString()}` : '';
+    };
+    ta.addEventListener('input', prev);
+    setTimeout(() => ta.focus(), 250);
+    $('#paste-ok', root).addEventListener('click', () => {
+      const list = parseItemList(ta.value, members, defaultOwner);
+      if (!list.length) { toast('沒有辨識到品項，請確認每行都是「品名 金額」'); return; }
+      closeSheet();
+      onDone(list);
+      toast(`已帶入 ${list.length} 項`);
+    });
+  });
+}
+
 export function openExpenseForm(id) {
   const D = tripData();
   const { trip } = D;
@@ -231,7 +306,7 @@ export function openExpenseForm(id) {
   const t = today();
   const defDate = days.includes(t) || !days.length ? t : (ls.get('tl_lastDate_' + trip.id) || days[0]);
   const v = e || {
-    date: defDate, category: 'food', currency: trip.currency, amount: '',
+    date: defDate, category: '', currency: trip.currency, amount: '',
     method: ls.get('tl_lastMethod', 'cash'), paidBy: ids.includes(getMe()) ? getMe() : ids[0],
     participants: ids, splitMode: 'equal', items: [], billedTwd: null, title: '', note: '',
   };
@@ -262,8 +337,8 @@ export function openExpenseForm(id) {
       <div class="field"><label for="f-amount">金額</label>
         <div class="amount-input"><span class="flag-in"></span><input id="f-amount" name="amount" inputmode="decimal" value="${v.amount ?? ''}" placeholder="0"><span class="unit"></span></div></div>
       <div class="field"><label for="f-title">項目</label><input id="f-title" name="title" value="${esc(v.title)}" placeholder="例如：松本清藥妝"></div>
-      <div class="field"><div class="label">分類</div>
-        <div class="opts">${CATS.map((c) => radio('category', c.id, `${c.icon} ${c.name}`, v.category === c.id)).join('')}</div></div>
+      <div class="field"><div class="label">分類 <span class="cat-hint small muted"></span></div>
+        <div class="opts">${radio('category', '', '未分類', !v.category)}${CATS.map((c) => radio('category', c.id, `${c.icon} ${c.name}`, v.category === c.id)).join('')}</div></div>
       <div class="field"><div class="label">付款方式</div>
         <div class="seg">${radio('method', 'cash', '💵 現金', v.method === 'cash')}${radio('method', 'card', '💳 刷卡', v.method === 'card')}</div></div>
       <div class="field bill-row"><label for="f-billed">🇹🇼 台幣出帳金額（帳單出來後再補）</label>
@@ -273,17 +348,20 @@ export function openExpenseForm(id) {
         <div class="opts">${trip.members.map((m) => radio('paidBy', m.id, avLabel(m), v.paidBy === m.id)).join('')}</div></div>
 
       <div class="field"><div class="label">怎麼分</div>
-        <div class="seg">${radio('splitMode', 'equal', '平分', v.splitMode !== 'items')}${radio('splitMode', 'items', '🧾 逐項分', v.splitMode === 'items')}</div></div>
+        <div class="seg">${radio('splitMode', 'self', '🙋 個人', v.splitMode === 'self')}${radio('splitMode', 'equal', '平分', !v.splitMode || v.splitMode === 'equal')}${radio('splitMode', 'items', '🧾 逐項分', v.splitMode === 'items')}</div>
+        <div class="hint split-hint"></div></div>
       <div class="split-equal">
         <div class="field"><div class="label">誰要分攤（平均分）${ids.length > 2 ? ' <button type="button" class="link-btn" id="part-all">全選</button>' : ''}</div>
-          <div class="opts">${trip.members.map((m) => check('part', m.id, avLabel(m), (v.participants || ids).includes(m.id))).join('')}</div>
-          <div class="hint">只勾自己 = 個人花費，不用跟旅伴分。</div></div>
+          <div class="opts">${trip.members.map((m) => check('part', m.id, avLabel(m), (v.participants || ids).includes(m.id))).join('')}</div></div>
       </div>
       <div class="items-block field">
         <div class="label items-label"></div>
-        <div class="hint items-hint" style="margin:-2px 0 10px">點頭像指定品項是誰的；點兩個人就兩人平分；都不點 = 大家平分。</div>
+        <div class="hint items-hint" style="margin:-2px 0 10px">新品項預設是付款人的，點頭像改成別人；點兩個人就兩人平分。打完金額按鍵盤的「下一項」可以連續輸入。</div>
         <div class="items-list"></div>
-        <button type="button" class="btn small secondary" data-act="add-item">＋ 新增品項</button>
+        <div class="items-btns">
+          <button type="button" class="btn small secondary" data-act="add-item">＋ 新增品項</button>
+          <button type="button" class="btn small secondary" data-act="paste-items">📋 貼上清單</button>
+        </div>
         <div class="quick-assign"></div>
         <div class="items-sum card"></div>
       </div>
@@ -308,22 +386,40 @@ export function openExpenseForm(id) {
       $('.items-list', root).innerHTML = items.map((it, i) => `
         <div class="it-row ${(it.owners || []).length ? '' : 'unassigned'}">
           <div class="it-top">
-            <input class="it-name" data-i="${i}" value="${esc(it.name || '')}" placeholder="品項">
-            <input class="it-amt" data-i="${i}" inputmode="decimal" value="${it.amount ?? ''}" placeholder="金額">
+            <input class="it-name" data-i="${i}" value="${esc(it.name || '')}" placeholder="品項" enterkeyhint="next">
+            <input class="it-amt" data-i="${i}" inputmode="decimal" value="${it.amount ?? ''}" placeholder="金額" enterkeyhint="next">
             <button type="button" class="it-del" data-del="${i}" aria-label="刪除品項">✕</button>
           </div>
           <div class="it-zh-row"><span class="it-zh-ic">中</span><input class="it-zh" data-i="${i}" value="${esc(it.nameZh || '')}"
             placeholder="${needsTranslate(it) ? '連上網路後會自動翻譯' : '中文名稱（選填）'}"></div>
           <div class="it-owners">${ownerBtns(it, i)}</div>
-        </div>`).join('') || '<div class="muted small" style="padding:6px 0 10px">還沒有品項。可以用收據辨識帶入，或手動新增。</div>';
+        </div>`).join('') || '<div class="muted small" style="padding:6px 0 10px">還沒有品項。可以拍收據辨識、手動新增，或貼上一整串清單。</div>';
       drawQuick();
       drawSum();
     };
     const drawQuick = () => {
-      $('.quick-assign', root).innerHTML = items.some((it) => !(it.owners || []).length)
-        ? `<div class="small muted quick-row">未指定的全部給：${trip.members.map((m) => `<button type="button" class="chip av-chip" data-assign-all="${esc(m.id)}">${avatar(m, 20)} ${esc(m.name)}</button>`).join(' ')}</div>`
+      $('.quick-assign', root).innerHTML = items.length > 1
+        ? `<div class="small muted quick-row">全部改給：${trip.members.map((m) => `<button type="button" class="chip av-chip" data-assign-all="${esc(m.id)}">${avatar(m, 20)} ${esc(m.name)}</button>`).join(' ')}</div>`
         : '';
     };
+    const payer = () => form.paidBy.value;
+    const newItem = (name = '', amount = null, owners) => ({ name, nameZh: '', amount, owners: owners || (payer() ? [payer()] : []) });
+    const addRow = () => {
+      items.push(newItem());
+      drawItems();
+      $$('.it-name', root).at(-1)?.focus();
+    };
+    // 鍵盤「下一項」：品名 → 金額 → 下一行（最後一行就自動新增）
+    root.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      const t = ev.target;
+      if (t.classList.contains('it-name')) { ev.preventDefault(); $$('.it-amt', root)[Number(t.dataset.i)]?.focus(); }
+      else if (t.classList.contains('it-amt')) {
+        ev.preventDefault();
+        const i = Number(t.dataset.i);
+        if (i === items.length - 1) addRow(); else $$('.it-name', root)[i + 1]?.focus();
+      }
+    });
     const drawSum = () => {
       const total = num(form.amount.value);
       const b = itemBreakdown(items, total, ids);
@@ -358,7 +454,7 @@ export function openExpenseForm(id) {
       const del = ev.target.closest('[data-del]');
       if (del) { items.splice(Number(del.dataset.del), 1); drawItems(); return; }
       const all = ev.target.closest('[data-assign-all]');
-      if (all) { items.forEach((it) => { if (!(it.owners || []).length) it.owners = [all.dataset.assignAll]; }); drawItems(); return; }
+      if (all) { items.forEach((it) => { it.owners = [all.dataset.assignAll]; }); drawItems(); return; }
       if (ev.target.id === 'part-all') {
         const boxes = $$('input[name=part]', form);
         const allOn = boxes.every((b) => b.checked);
@@ -368,9 +464,13 @@ export function openExpenseForm(id) {
       }
       const act = ev.target.closest('[data-act]')?.dataset.act;
       if (act === 'add-item') {
-        items.push({ name: '', nameZh: '', amount: null, owners: [] });
-        drawItems();
-        $$('.it-name', root).at(-1)?.focus();
+        addRow();
+      } else if (act === 'paste-items') {
+        openPasteItems(trip.members, payer(), (list) => {
+          items = items.filter((it) => it.name || it.amount).concat(list);
+          drawItems();
+          sync();
+        });
       } else if (act === 'use-item-sum') {
         form.amount.value = itemBreakdown(items, null, ids).itemSum;
         sync();
@@ -524,7 +624,7 @@ export function openExpenseForm(id) {
         <details><summary class="small muted">看辨識出的原始內容</summary><pre class="ocr-text">${esc(r.text)}</pre></details>`;
       box.querySelector('[data-ocr-total]')?.addEventListener('click', () => { form.amount.value = r.total; sync(); });
       const takeItems = () => {
-        items = goodItems.map((it) => ({ name: it.name, nameZh: it.nameZh || '', zhSource: it.zhSource || '', amount: it.amount, owners: [] }));
+        items = goodItems.map((it) => ({ name: it.name, nameZh: it.nameZh || '', zhSource: it.zhSource || '', amount: it.amount, owners: payer() ? [payer()] : [] }));
         drawItems();
         sync();
       };
@@ -548,12 +648,15 @@ export function openExpenseForm(id) {
       $('.bill-row', root).hidden = !(card && c !== 'TWD');
       $('.unit', root).textContent = c;
       $('.flag-in', root).textContent = flag(c);
-      const itemsMode = form.splitMode.value === 'items';
-      $('.split-equal', root).hidden = itemsMode;
+      const mode = form.splitMode.value;
+      const itemsMode = mode === 'items';
+      $('.split-equal', root).hidden = mode !== 'equal';
+      $('.split-hint', root).textContent = mode === 'self' ? `這筆是${memberName(payer())}自己的花費，不分給別人。` : '';
       // 品項明細一律可以記（之後才搜尋得到），只有逐項分時才需要指定歸屬
       const blk = $('.items-block', root);
       blk.classList.toggle('mode-items', itemsMode);
-      $('.items-label', root).textContent = itemsMode ? '🧾 品項（逐項分）' : `品項明細（選填，記下來之後可以搜尋）${items.length ? `・${items.length} 項` : ''}`;
+      if (itemsMode && !items.length) { items.push(newItem()); drawItems(); }
+      $('.items-label', root).textContent = itemsMode ? '🧾 品項（點頭像指定是誰的）' : `品項明細（選填，記下來之後可以搜尋）${items.length ? `・${items.length} 項` : ''}`;
       $('.items-hint', root).hidden = !itemsMode;
       drawSum();
       const amt = num(form.amount.value);
@@ -562,13 +665,24 @@ export function openExpenseForm(id) {
       const billed = num(form.billedTwd.value);
       if (card && billed != null) { prev.textContent = `實際出帳 ${twd(billed)}（匯率約 ${rateStr(billed / amt)}），結算時算台幣`; return; }
       const rates = tripRates(trip, D.exchanges);
-      const r = c === trip.currency ? (card ? rates.cardRate : rates.rate) : null;
+      const r = c === trip.currency ? (card ? rates.cardRate : rates.rateOf(payer())) : null;
       prev.textContent = card
         ? `刷卡先用${c}記，帳單出來後補台幣金額${r ? `（預估約 ${twd(amt * r)}）` : ''}`
-        : `現金用${c}結算${r ? `（約合 ${twd(amt * r)}）` : ''}`;
+        : `現金用${c}結算${r ? `（約合 ${twd(amt * r)}，用${memberName(payer())}的匯率 ${rateStr(r)}）` : ''}`;
     };
     form.addEventListener('input', (ev) => { if (!ev.target.dataset.i) sync(); if (ev.target.name === 'date') drawDays(); });
-    form.addEventListener('change', (ev) => { if (ev.target.name === 'category') categoryTouched = true; sync(); });
+    form.addEventListener('change', (ev) => {
+      if (ev.target.name === 'category') { categoryTouched = true; $('.cat-hint', root).textContent = ''; }
+      sync();
+    });
+    // 依項目名稱自動建議分類（使用者沒自己選過才會帶入）
+    form.title.addEventListener('input', () => {
+      if (categoryTouched) return;
+      const sug = suggestCategory(form.title.value);
+      const target = $(`input[name=category][value="${sug?.cat || ''}"]`, form);
+      if (target) target.checked = true;
+      $('.cat-hint', root).textContent = sug ? (sug.from === 'history' ? '（依之前的紀錄自動帶入）' : '（自動建議）') : '';
+    });
     drawItems();
     drawDays();
     sync();
@@ -584,7 +698,7 @@ export function openExpenseForm(id) {
         }))
         .filter((it) => it.amount);
       let amount = num(form.amount.value);
-      if ((!amount || amount <= 0) && splitMode === 'items' && cleanItems.length) {
+      if ((!amount || amount <= 0) && cleanItems.length) {
         amount = cleanItems.reduce((a, it) => a + it.amount, 0);
       }
       if (!amount || amount <= 0) { toast('請輸入金額'); form.amount.focus(); return; }
@@ -595,11 +709,11 @@ export function openExpenseForm(id) {
       const method = form.method.value;
       const data = {
         title: form.title.value.trim(),
-        category: form.category.value || 'other',
+        category: form.category.value || null,
         currency, amount, method,
         paidBy: form.paidBy.value,
         splitMode,
-        participants: splitMode === 'equal' ? participants : ids,
+        participants: splitMode === 'equal' ? participants : splitMode === 'self' ? [form.paidBy.value] : ids,
         items: cleanItems,
         billedTwd: method === 'card' && currency !== 'TWD' ? num(form.billedTwd.value) : null,
         date: form.date.value || today(),
@@ -635,15 +749,16 @@ export function openExchangeForm(id) {
   const { trip } = D;
   const x = id ? D.exchanges.find((y) => y.id === id) : null;
   const me = getMe();
-  const v = x || { member: trip.members.some((m) => m.id === me) ? me : trip.members[0].id, date: today(), foreignAmount: '', twdAmount: '', note: '' };
+  const v = x || { member: trip.members.some((m) => m.id === me) ? me : trip.members[0].id, kind: 'exchange', date: today(), foreignAmount: '', twdAmount: '', note: '' };
   const html = `
     <form id="ex-form" autocomplete="off">
-      <div class="field"><div class="label">誰換的</div>
+      <div class="field"><div class="seg">${radio('kind', 'exchange', '💱 換匯', v.kind !== 'atm')}${radio('kind', 'atm', '🏧 ATM 提款', v.kind === 'atm')}</div></div>
+      <div class="field"><div class="label">誰的</div>
         <div class="opts">${trip.members.map((m) => radio('member', m.id, avLabel(m), v.member === m.id)).join('')}</div></div>
-      <div class="field"><label for="x-f">換到的外幣</label>
+      <div class="field"><label for="x-f">拿到的外幣</label>
         <div class="amount-input"><span class="flag-in">${flag(trip.currency)}</span><input id="x-f" name="foreignAmount" inputmode="decimal" value="${v.foreignAmount}" placeholder="0" required><span class="unit">${esc(trip.currency)}</span></div></div>
-      <div class="field"><label for="x-t">付出的台幣</label>
-        <div class="amount-input"><span class="flag-in">🇹🇼</span><input id="x-t" name="twdAmount" inputmode="decimal" value="${v.twdAmount}" placeholder="0" required><span class="unit">TWD</span></div>
+      <div class="field"><label for="x-t">付出的台幣 <span class="atm-note small muted"></span></label>
+        <div class="amount-input"><span class="flag-in">🇹🇼</span><input id="x-t" name="twdAmount" inputmode="decimal" value="${v.twdAmount ?? ''}" placeholder="0"><span class="unit">TWD</span></div>
         <div class="hint rate-preview"></div></div>
       <div class="row2">
         <div class="field"><label for="x-d">日期</label><input id="x-d" type="date" name="date" value="${esc(v.date)}"></div>
@@ -652,10 +767,11 @@ export function openExchangeForm(id) {
       <button class="btn" type="submit">${x ? '儲存修改' : '新增'}</button>
       ${x ? `<button class="btn danger" type="button" data-act="delete-exchange" data-id="${esc(x.id)}">刪除這筆</button>` : ''}
     </form>`;
-  openSheet(x ? '編輯換匯' : '新增換匯紀錄', html, (root) => {
+  openSheet(x ? '編輯換匯／提款' : '新增換匯／提款', html, (root) => {
     const form = $('#ex-form', root);
     const sync = () => {
       const f = num(form.foreignAmount.value), t = num(form.twdAmount.value);
+      $('.atm-note', root).textContent = form.kind.value === 'atm' ? '（選填，信用卡帳單出來再補）' : '';
       $('.rate-preview', root).textContent = f && t ? `匯率：1 ${trip.currency} = ${rateStr(t / f)} TWD（1 TWD = ${rateStr(f / t)} ${trip.currency}）` : '';
     };
     form.addEventListener('input', sync);
@@ -663,8 +779,10 @@ export function openExchangeForm(id) {
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const f = num(form.foreignAmount.value), t = num(form.twdAmount.value);
-      if (!f || f <= 0 || !t || t <= 0) { toast('請輸入外幣和台幣金額'); return; }
-      const data = { member: form.member.value, currency: trip.currency, foreignAmount: f, twdAmount: t, date: form.date.value || today(), note: form.note.value.trim(), updatedAt: Date.now() };
+      const kind = form.kind.value;
+      if (!f || f <= 0) { toast('請輸入外幣金額'); return; }
+      if (kind === 'exchange' && (!t || t <= 0)) { toast('請輸入付出的台幣'); return; }
+      const data = { member: form.member.value, kind, currency: trip.currency, foreignAmount: f, twdAmount: t && t > 0 ? t : null, date: form.date.value || today(), note: form.note.value.trim(), updatedAt: Date.now() };
       if (x) S.store.updateItem(S.tripId, 'exchanges', x.id, data);
       else S.store.addItem(S.tripId, 'exchanges', { ...data, createdAt: Date.now() });
       closeSheet();
@@ -751,4 +869,92 @@ export function openWhoAmI() {
     <div class="opts" style="margin-bottom:16px">${ledgerMembers().map((m) => `<button class="chip av-chip" data-act="set-me" data-id="${esc(m.id)}" data-close="1">${avatar(m, 26)} ${esc(m.name)}</button>`).join('')}</div>
     <div style="display:flex;gap:8px"><input id="me-new" placeholder="都不是？輸入你的名字"><button class="btn small" data-act="add-me">加入</button></div>`;
   openSheet('你是哪一位？', html);
+}
+
+
+/* ---------- 帳本改名 ---------- */
+export function openRenameLedger() {
+  const cur = S.ld.ledger.name;
+  openSheet('編輯帳本名稱', `
+    <form id="rn-form" autocomplete="off">
+      <div class="field"><label for="rn">帳本名稱</label><input id="rn" name="rn" value="${esc(cur)}" required></div>
+      <button class="btn" type="submit">儲存</button>
+    </form>`, (root) => {
+    const form = $('#rn-form', root);
+    setTimeout(() => { form.rn.focus(); form.rn.select(); }, 250);
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const v = form.rn.value.trim();
+      if (!v) { toast('請輸入名稱'); return; }
+      S.store.updateLedger(S.ledgerId, { name: v });
+      closeSheet();
+      toast('已改名');
+    });
+  });
+}
+
+/* ---------- 某位旅伴在這趟的匯率 ---------- */
+export function openRateForm(mid) {
+  const D = tripData();
+  const { trip } = D;
+  const rates = tripRates(trip, D.exchanges);
+  const manual = (trip.memberRates || {})[mid];
+  const auto = rates.autoRate[mid];
+  openSheet(`${memberName(mid)} 的匯率`, `
+    <form id="rate-form" autocomplete="off">
+      <p class="small muted" style="margin-top:0">1 ${esc(trip.currency)} = ? TWD。${memberName(mid)}付的外幣現金，換算台幣時用這個匯率。</p>
+      <div class="kv"><span class="k">依換匯紀錄自動計算</span><span class="v">${auto ? rateStr(auto) : '沒有紀錄'}</span></div>
+      <div class="field" style="margin-top:10px"><label for="mr">手動設定（選填，會優先使用）</label>
+        <input id="mr" name="mr" inputmode="decimal" value="${manual ?? ''}" placeholder="${auto ? rateStr(auto) : '例如 0.215'}"></div>
+      <button class="btn" type="submit">儲存</button>
+      ${manual ? '<button class="btn secondary" type="button" id="mr-clear">清除手動設定，改用自動計算</button>' : ''}
+    </form>`, (root) => {
+    const form = $('#rate-form', root);
+    $('#mr-clear', root)?.addEventListener('click', () => {
+      S.store.updateTrip(trip.id, { [`memberRates.${mid}`]: null });
+      closeSheet();
+      toast('已改用自動計算');
+    });
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const raw = form.mr.value.trim();
+      const r = raw ? num(raw) : null;
+      if (raw && (!r || r <= 0)) { toast('匯率格式不正確'); return; }
+      S.store.updateTrip(trip.id, { [`memberRates.${mid}`]: r });
+      closeSheet();
+      toast('已儲存');
+    });
+  });
+}
+
+/* ---------- 外幣現金：期初、實際點算 ---------- */
+export function openCashForm(mid) {
+  const D = tripData();
+  const { trip } = D;
+  const c = (trip.cash || {})[mid] || {};
+  const cur = trip.currency;
+  openSheet(`${memberName(mid)} 的${cur}現金`, `
+    <form id="cash-form" autocomplete="off">
+      <div class="field"><label for="co">期初現金（出發時錢包裡已經有的${esc(cur)}）</label>
+        <div class="amount-input"><span class="flag-in">${flag(cur)}</span><input id="co" name="opening" inputmode="decimal" value="${c.opening ?? ''}" placeholder="0"><span class="unit">${esc(cur)}</span></div>
+        <div class="hint">例如上次旅行剩下的。這趟出發前「新換」的請記在換匯紀錄，不要重複填在這裡。</div></div>
+      <div class="field"><label for="cot">這筆期初現金當初的台幣成本（選填）</label>
+        <input id="cot" name="openingTwd" inputmode="decimal" value="${c.openingTwd ?? ''}" placeholder="知道的話填，會一起算進匯率"></div>
+      <div class="field"><label for="cc">實際點算（旅程結束時錢包裡剩下的${esc(cur)}）</label>
+        <div class="amount-input"><span class="flag-in">${flag(cur)}</span><input id="cc" name="counted" inputmode="decimal" value="${c.counted ?? ''}" placeholder="還沒點算就留空"><span class="unit">${esc(cur)}</span></div></div>
+      <button class="btn" type="submit">儲存</button>
+    </form>`, (root) => {
+    const form = $('#cash-form', root);
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const val = (inp) => { const raw = inp.value.trim(); if (!raw) return null; const n = num(raw); return n != null && n >= 0 ? n : NaN; };
+      const opening = val(form.opening), openingTwd = val(form.openingTwd), counted = val(form.counted);
+      if ([opening, openingTwd, counted].some((x) => Number.isNaN(x))) { toast('金額格式不正確'); return; }
+      S.store.updateTrip(trip.id, {
+        [`cash.${mid}`]: { ...c, opening, openingTwd, counted, countedAt: counted != null ? Date.now() : null },
+      });
+      closeSheet();
+      toast('已儲存');
+    });
+  });
 }

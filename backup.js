@@ -7,7 +7,7 @@ import { receiptKey } from './store.js';
  */
 export async function exportLedger(store, ld, { withReceipts = false, onProgress } = {}) {
   const trips = [];
-  const list = Object.values(ld.trips);
+  const list = Object.values(ld.trips).filter((t) => !t.trip.deletedAt); // 最近刪除裡的不備份
   let n = 0;
   for (const t of list) {
     const receipts = {};
@@ -74,7 +74,7 @@ export function exportCsv(tripsData, memberName) {
       const base = [
         d.trip.name, r.date, r.title, cats[r.category] || '', r.currency, r.amount,
         r.method === 'card' ? '刷卡' : '現金', r.billedTwd ?? '', r.val.twd != null ? Math.round(r.val.twd) : '',
-        memberName(r.paidBy), r.splitMode === 'items' ? '逐項' : '平分',
+        memberName(r.paidBy), r.splitMode === 'items' ? '逐項' : r.splitMode === 'self' ? '個人' : '平分',
         Object.keys(r.fractions).map(memberName).join('、'),
       ];
       if (r.items?.length) {

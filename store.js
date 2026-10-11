@@ -29,6 +29,16 @@ export async function createStore() {
   return createLocalStore();
 }
 
+/** 本機模式模擬 Firestore 的「a.b」欄位路徑更新 */
+function applyPatch(obj, patch) {
+  for (const [k, v] of Object.entries(patch)) {
+    const parts = k.split('.');
+    let o = obj;
+    for (const p of parts.slice(0, -1)) o = (o[p] && typeof o[p] === 'object') ? o[p] : (o[p] = {});
+    o[parts.at(-1)] = v;
+  }
+}
+
 /** 把多次變動合併成一次通知，避免畫面一直重畫 */
 function batcher(fn, ms = 40) {
   let t = 0;
@@ -99,7 +109,7 @@ function createLocalStore() {
       save();
       return id;
     },
-    updateLedger(id, patch) { Object.assign(db.ledgers[id], patch); save(); },
+    updateLedger(id, patch) { applyPatch(db.ledgers[id], patch); save(); },
     async ledgerExists(id) { return !!db.ledgers[id]; },
     async deleteLedger(id) {
       for (const tid of db.ledgers[id]?.tripIds || []) await store.deleteTrip(id, tid, true);
@@ -114,7 +124,7 @@ function createLocalStore() {
       save();
       return id;
     },
-    updateTrip(id, patch) { Object.assign(db.trips[id], patch); save(); },
+    updateTrip(id, patch) { applyPatch(db.trips[id], patch); save(); },
     async deleteTrip(ledgerId, id, silent) {
       delete db.trips[id];
       const l = db.ledgers[ledgerId];

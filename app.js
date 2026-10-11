@@ -1,17 +1,18 @@
-// 旅伴記帳 v4 — 主程式：畫面切換、按鈕事件、啟動
+// 旅伴記帳 v5 — 主程式：畫面切換、按鈕事件、啟動
 import { createStore, uid, receiptKey } from './store.js';
 import { calc } from './calc.js';
 import { aiReady, aiTranslateNames } from './ai.js';
 import { fmtRange } from './calendar.js';
 import {
   S, hooks, render, myLedgers, rememberLedger, forgetLedger, getMe, setMe, member, memberName, ledgerMembers, tripData, allTrips,
+  deletedTrips, daysLeft, TRASH_DAYS,
 } from './state.js';
 import { $, $$, esc, flag, num, ls, toast, avatar, closeSheet, closeAllSheets, saveFile, openSheet } from './ui.js';
 import { welcomeHTML, tripsTab, searchTab, searchResultsHTML, statsTab, ledgerSettingsTab } from './views-ledger.js';
-import { listTab, settleTab, exchangeTab, tripSettingsTab } from './views-trip.js';
+import { listTab, settleTab, exchangeTab, tripSettingsTab, previousTripSameCurrency } from './views-trip.js';
 import {
   nav, needsTranslate, memberUsedInTrip, openTripForm, openMemberForm, openExpenseForm, openExchangeForm,
-  openLedgerForm, openJoin, openWhoAmI,
+  openLedgerForm, openJoin, openWhoAmI, openRenameLedger, openRateForm, openCashForm,
 } from './forms.js';
 import { exportLedger, importLedger, exportCsv } from './backup.js';
 
@@ -32,17 +33,31 @@ function draw() {
   }
   const me = member(getMe());
 
+  if (S.ld.ledger.deletedAt) {
+    const left = daysLeft(S.ld.ledger.deletedAt);
+    app.innerHTML = `<header class="top"><button class="titles ledger-switch" data-act="ledger-menu"><h1>${esc(S.ld.ledger.name)} <span class="caret">▾</span></h1>
+        <div class="sub">已刪除</div></button></header>
+      <main><div class="card">
+        <h3>🗑 這本帳本已被刪除</h3>
+        <p class="small">${new Date(S.ld.ledger.deletedAt).toLocaleDateString('zh-TW')} 由 ${esc(memberName(S.ld.ledger.deletedBy) || '某位成員')} 刪除。還剩 <b>${left} 天</b>可以復原，之後會永久刪除。</p>
+        <button class="btn" data-act="restore-ledger">↩︎ 復原帳本</button>
+        <button class="btn danger" data-act="purge-ledger">立即永久刪除</button>
+        <button class="btn secondary" data-act="forget-ledger">從這支手機移除</button>
+      </div></main>`;
+    return;
+  }
+
   if (S.view === 'trip') {
     const d = tripData();
-    if (!d) { S.view = 'ledger'; return draw(); }
+    if (!d || d.trip.deletedAt) { S.view = 'ledger'; return draw(); }
     const { trip } = d;
     const body = { list: listTab, settle: settleTab, exchange: exchangeTab, settings: tripSettingsTab }[S.tab](d);
     const tabs = [['list', '📒', '帳目'], ['settle', '🤝', '結算'], ['exchange', '💱', '換匯'], ['settings', '⚙️', '設定']];
     app.innerHTML = `
       <header class="top">
         <button class="icon-btn" data-act="back" aria-label="回到帳本">‹</button>
-        <div class="titles"><h1>${flag(trip.currency)} ${esc(trip.name)}</h1>
-          <div class="sub">${trip.startDate ? esc(fmtRange(trip.startDate, trip.endDate)) + ' · ' : ''}${trip.members.length} 人 · ${esc(trip.currency)}</div></div>
+        <button class="titles title-btn" data-act="edit-trip" aria-label="編輯旅程"><h1>${flag(trip.currency)} ${esc(trip.name)} <span class="caret">✎</span></h1>
+          <div class="sub">${trip.startDate ? esc(fmtRange(trip.startDate, trip.endDate)) + ' · ' : ''}${trip.members.length} 人 · ${esc(trip.currency)}</div></button>
         <span class="me-btn">${avatar(me, 34)}</span>
       </header>
       <main>${body}</main>
@@ -54,7 +69,7 @@ function draw() {
     app.innerHTML = `
       <header class="top">
         <button class="titles ledger-switch" data-act="ledger-menu"><h1>${esc(S.ld.ledger.name)} <span class="caret">▾</span></h1>
-          <div class="sub">${ledgerMembers().length} 位成員 · ${Object.keys(S.ld.trips).length} 趟旅程</div></button>
+          <div class="sub">${ledgerMembers().length} 位成員 · ${allTrips().length} 趟旅程</div></button>
         <button class="me-btn" data-act="ltab" data-tab="settings" aria-label="我是 ${esc(me?.name || '')}">${avatar(me, 34)}</button>
       </header>
       <main>${body}</main>
@@ -94,8 +109,9 @@ function openLedger(id, name) {
     // 正在輸入搜尋字時，不要重畫整個畫面（避免鍵盤收起來）
     const typing = document.activeElement?.id === 'q';
     S.ld = ld;
-    rememberLedger(id, ld.ledger.name);
-    if (S.view === 'trip' && !ld.trips[S.tripId] && !ld.pending) { S.view = 'ledger'; toast('這趟旅程已被刪除'); }
+    rememberLedger(id, ld.ledger.name, ld.ledger.deletedAt || null);
+    if (S.view === 'trip' && (!ld.trips[S.tripId] || ld.trips[S.tripId].trip.deletedAt) && !ld.pending) { S.view = 'ledger'; toast('這趟旅程已被刪除'); }
+    purgeExpired();
     if (typing) { const box = $('#search-results'); if (box) box.innerHTML = searchResultsHTML(); } else render();
     if (!S.askedMe && !ledgerMembers().some((m) => m.id === getMe())) { S.askedMe = true; openWhoAmI(); }
     if (Object.values(ld.trips).some((t) => t.expenses.some((x) => x.translatePending))) scheduleTranslate();
@@ -154,26 +170,109 @@ function openLedgerMenu() {
   const list = myLedgers();
   openSheet('切換帳本', `
     ${list.map((l) => `<button class="member-line" data-act="switch-ledger" data-id="${esc(l.id)}">
-      <span class="trip-flag">📒</span><span class="mid">${esc(l.name)}${l.id === S.ledgerId ? ' <span class="tag">目前</span>' : ''}</span><span class="muted">›</span></button>`).join('')}
-    <div class="row2" style="margin-top:14px"><button class="btn secondary" data-act="new-ledger">＋ 建立帳本</button>
+      <span class="trip-flag">📒</span><span class="mid">${esc(l.name)}${l.id === S.ledgerId ? ' <span class="tag">目前</span>' : ''}${l.deletedAt ? ` <span class="tag warn">已刪除・剩 ${daysLeft(l.deletedAt)} 天</span>` : ''}</span><span class="muted">›</span></button>`).join('')}
+    ${S.ld && !S.ld.ledger.deletedAt ? '<button class="btn secondary" data-act="rename-ledger" style="margin-top:12px">✏️ 編輯目前帳本的名稱</button>' : ''}
+    <div class="row2" style="margin-top:12px"><button class="btn secondary" data-act="new-ledger">＋ 建立帳本</button>
       <button class="btn secondary" data-act="join-ledger">加入帳本</button></div>`);
 }
 
-async function deleteTrip(tid) {
+function openTripMenu(tid) {
   const d = tripData(tid);
   if (!d) return;
-  if (!confirm(`確定要刪除「${d.trip.name}」？\n所有人的帳目、換匯紀錄、收據照片都會一起刪除，無法復原。`)) return;
+  openSheet(d.trip.name, `
+    <button class="btn secondary" data-act="menu-open" data-id="${esc(tid)}">打開旅程</button>
+    <button class="btn secondary" data-act="edit-trip" data-id="${esc(tid)}">✏️ 編輯旅程（名稱、日期、幣別、旅伴）</button>
+    <button class="btn danger" data-act="delete-trip" data-id="${esc(tid)}">🗑 刪除旅程</button>`);
+}
+
+/** 要求輸入名稱才能刪除，避免誤按 */
+function confirmByName(kind, name, extra) {
+  if (!confirm(`確定要刪除${kind}「${name}」？\n${extra}`)) return false;
+  const typed = prompt(`請輸入${kind}名稱「${name}」確認刪除`);
+  if (typed == null) return false;
+  if (typed.trim() !== name.trim()) { toast('名稱不符，已取消'); return false; }
+  return true;
+}
+
+function deleteTrip(tid) {
+  const d = tripData(tid);
+  if (!d) return;
+  if (!confirmByName('旅程', d.trip.name, `刪除後會放進「最近刪除」保留 ${TRASH_DAYS} 天，期間可以復原。`)) return;
+  S.store.updateTrip(tid, { deletedAt: Date.now(), deletedBy: getMe() || null });
+  closeAllSheets();
+  S.view = 'ledger';
+  render();
+  toast(`已移到最近刪除（${TRASH_DAYS} 天內可復原）`);
+}
+
+/* ---------- 最近刪除 ---------- */
+function openTrash() {
+  const list = deletedTrips().sort((a, b) => b.trip.deletedAt - a.trip.deletedAt);
+  openSheet('最近刪除', `
+    <p class="small muted" style="margin-top:0">刪除的旅程保留 ${TRASH_DAYS} 天，之後會自動永久刪除。</p>
+    ${list.length ? list.map((d) => `
+      <div class="trash-row">
+        <div><b>${flag(d.trip.currency)} ${esc(d.trip.name)}</b>
+          <div class="small muted">${new Date(d.trip.deletedAt).toLocaleDateString('zh-TW')} ${d.trip.deletedBy ? esc(memberName(d.trip.deletedBy)) + ' ' : ''}刪除・剩 ${daysLeft(d.trip.deletedAt)} 天・${d.expenses.length} 筆帳目</div></div>
+        <div class="trash-btns">
+          <button class="btn small" data-act="restore-trip" data-id="${esc(d.trip.id)}">復原</button>
+          <button class="btn small danger" data-act="purge-trip" data-id="${esc(d.trip.id)}">永久刪除</button>
+        </div>
+      </div>`).join('') + '<button class="btn danger" data-act="purge-all" style="margin-top:14px">全部清空</button>' : '<div class="empty">沒有最近刪除的旅程</div>'}`);
+}
+async function purgeTrips(tids) {
   try {
-    toast('刪除中…');
-    await S.store.deleteTrip(S.ledgerId, tid);
-    closeAllSheets();
-    S.view = 'ledger';
-    render();
-    toast('旅程已刪除');
+    toast('永久刪除中…');
+    for (const tid of tids) await S.store.deleteTrip(S.ledgerId, tid);
+    toast('已永久刪除');
   } catch (err) {
     console.error(err);
     toast('刪除失敗：' + (err?.message || err));
   }
+}
+/** 打開帳本時，順便清掉超過 30 天的 */
+let purging = false;
+async function purgeExpired() {
+  if (purging || !S.ld) return;
+  const limit = Date.now() - TRASH_DAYS * 86400000;
+  const lid = S.ledgerId;
+  purging = true;
+  try {
+    if (S.ld.ledger.deletedAt && S.ld.ledger.deletedAt < limit) {
+      S.unsub?.(); S.unsub = null;
+      await S.store.deleteLedger(lid);
+      forgetLedger(lid);
+      S.ledgerId = null; S.ld = null;
+      if (myLedgers()[0]) openLedger(myLedgers()[0].id); else render();
+      return;
+    }
+    const old = deletedTrips().filter((d) => d.trip.deletedAt < limit).map((d) => d.trip.id);
+    for (const tid of old) await S.store.deleteTrip(lid, tid);
+  } catch (err) {
+    console.warn('清除過期資料失敗，下次再試', err);
+  } finally {
+    purging = false;
+  }
+}
+
+/** 把上一趟同幣別旅程剩下的現金，帶成這趟的期初現金 */
+function carryCash(prevTripId) {
+  const d = tripData();
+  const prev = tripData(prevTripId);
+  if (!d || !prev) return;
+  const pc = calc(prev, 'split');
+  const patch = {};
+  for (const m of d.trip.members) {
+    const cc = pc.cashCheck[m.id];
+    if (!cc || !cc.used || ((d.trip.cash || {})[m.id]?.opening)) continue;
+    const left = cc.counted ?? cc.expected;
+    if (!(left > 0)) continue;
+    const r = pc.rates.memberRate[m.id];
+    patch[`cash.${m.id}`] = { ...((d.trip.cash || {})[m.id] || {}), opening: left, openingTwd: r ? Math.round(left * r) : null, openingFrom: `${prev.trip.name}剩下的` };
+  }
+  if (!Object.keys(patch).length) return;
+  S.store.updateTrip(d.trip.id, patch);
+  toast('已帶入期初現金');
 }
 
 async function doExportBackup() {
@@ -263,18 +362,48 @@ document.addEventListener('click', async (ev) => {
       break;
     case 'delete-ledger': {
       const name = S.ld.ledger.name;
-      if (!confirm(`確定要刪除整本「${name}」？\n裡面 ${Object.keys(S.ld.trips).length} 趟旅程的帳目、收據照片都會刪除，所有成員都看不到，無法復原。`)) return;
-      if (prompt(`請輸入帳本名稱「${name}」確認刪除`) !== name) { toast('名稱不符，已取消'); return; }
+      if (!confirmByName('帳本', name, `裡面有 ${allTrips().length} 趟旅程。刪除後會保留 ${TRASH_DAYS} 天，期間所有成員都可以復原。`)) return;
+      store.updateLedger(S.ledgerId, { deletedAt: Date.now(), deletedBy: getMe() || null });
+      toast(`帳本已刪除（${TRASH_DAYS} 天內可復原）`);
+      break;
+    }
+    case 'restore-ledger':
+      store.updateLedger(S.ledgerId, { deletedAt: null, deletedBy: null });
+      toast('帳本已復原');
+      break;
+    case 'purge-ledger': {
+      if (!confirm(`立即永久刪除「${S.ld.ledger.name}」？刪除後無法復原。`)) return;
       try {
-        toast('刪除中…');
+        toast('永久刪除中…');
         const lid = S.ledgerId;
         S.unsub?.(); S.unsub = null;
         await store.deleteLedger(lid);
         forgetLedger(lid);
         S.ledgerId = null; S.ld = null;
         if (myLedgers()[0]) openLedger(myLedgers()[0].id); else render();
-        toast('帳本已刪除');
+        toast('帳本已永久刪除');
       } catch (err) { toast('刪除失敗：' + (err?.message || err)); }
+      break;
+    }
+    case 'rename-ledger': closeAllSheets(); openRenameLedger(); break;
+    case 'open-trash': openTrash(); break;
+    case 'restore-trip':
+      store.updateTrip(id, { deletedAt: null, deletedBy: null });
+      closeSheet();
+      toast('旅程已復原');
+      break;
+    case 'purge-trip': {
+      const d = tripData(id);
+      if (!confirm(`永久刪除「${d?.trip.name}」？刪除後無法復原。`)) return;
+      closeSheet();
+      purgeTrips([id]);
+      break;
+    }
+    case 'purge-all': {
+      const ids = deletedTrips().map((d) => d.trip.id);
+      if (!ids.length || !confirm(`永久刪除最近刪除裡的 ${ids.length} 趟旅程？刪除後無法復原。`)) return;
+      closeSheet();
+      purgeTrips(ids);
       break;
     }
     case 'export-backup': doExportBackup(); break;
@@ -311,7 +440,12 @@ document.addEventListener('click', async (ev) => {
     // 旅程
     case 'new-trip': openTripForm(null); break;
     case 'open-trip': openTrip(id); break;
-    case 'edit-trip': openTripForm(tripData().trip); break;
+    case 'edit-trip': { closeAllSheets(); const d = tripData(id || S.tripId); if (d) openTripForm(d.trip); break; }
+    case 'trip-menu': openTripMenu(id); break;
+    case 'menu-open': openTrip(id); break;
+    case 'edit-rate': openRateForm(id); break;
+    case 'edit-cash': openCashForm(id); break;
+    case 'carry-cash': carryCash(id); break;
     case 'delete-trip': deleteTrip(id || S.tripId); break;
     case 'toggle-trip-member': {
       const d = tripData();

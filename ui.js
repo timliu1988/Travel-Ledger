@@ -10,7 +10,8 @@ export const CATS = [
   { id: 'fun', name: '門票娛樂', icon: '🎡' },
   { id: 'other', name: '其他', icon: '📦' },
 ];
-export const catOf = (id) => CATS.find((c) => c.id === id) || CATS[CATS.length - 1];
+export const NO_CAT = { id: 'none', name: '未分類', icon: '📝' };
+export const catOf = (id) => CATS.find((c) => c.id === id) || NO_CAT;
 
 export const CURRENCIES = [
   ['JPY', '日圓', '🇯🇵', '日本'], ['KRW', '韓元', '🇰🇷', '韓國'], ['THB', '泰銖', '🇹🇭', '泰國'], ['HKD', '港幣', '🇭🇰', '香港'],

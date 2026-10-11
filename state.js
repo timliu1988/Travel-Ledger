@@ -24,11 +24,15 @@ export const render = () => hooks.render();
 
 /* ---------- 這支手機記住的帳本 ---------- */
 export const myLedgers = () => ls.get('tl_ledgers', []);
-export function rememberLedger(id, name) {
+export function rememberLedger(id, name, deletedAt) {
   const list = myLedgers();
   const old = list.find((x) => x.id === id);
-  if (old) { if (old.name !== name && name) { old.name = name; ls.set('tl_ledgers', list); } return; }
-  list.push({ id, name: name || '帳本', addedAt: Date.now() });
+  if (old) {
+    const nd = deletedAt === undefined ? old.deletedAt : (deletedAt || null);
+    if ((name && old.name !== name) || old.deletedAt !== nd) { if (name) old.name = name; old.deletedAt = nd; ls.set('tl_ledgers', list); }
+    return;
+  }
+  list.push({ id, name: name || '帳本', addedAt: Date.now(), deletedAt: deletedAt || null });
   ls.set('tl_ledgers', list);
 }
 export function forgetLedger(id) {
@@ -54,4 +58,9 @@ export function tripData(tid = S.tripId) {
   const members = ledgerMembers().filter((m) => ids.includes(m.id));
   return { trip: { ...t.trip, members }, expenses: t.expenses, exchanges: t.exchanges, loaded: t.loaded };
 }
-export const allTrips = () => Object.keys(S.ld?.trips || {}).map((tid) => tripData(tid)).filter(Boolean);
+/** 目前的旅程（不含「最近刪除」裡的） */
+export const allTrips = () => Object.keys(S.ld?.trips || {}).map((tid) => tripData(tid)).filter((d) => d && !d.trip.deletedAt);
+/** 「最近刪除」裡的旅程 */
+export const deletedTrips = () => Object.keys(S.ld?.trips || {}).map((tid) => tripData(tid)).filter((d) => d && d.trip.deletedAt);
+export const TRASH_DAYS = 30;
+export const daysLeft = (deletedAt) => Math.max(0, TRASH_DAYS - Math.floor((Date.now() - deletedAt) / 86400000));

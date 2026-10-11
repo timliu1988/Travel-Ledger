@@ -211,14 +211,14 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); out
 .opts { display: flex; flex-wrap: wrap; gap: 8px; }
 .opt { position: relative; }
 .opt input { position: absolute; opacity: 0; pointer-events: none; }
-.opt span {
+.opt > span {
   display: inline-block; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line);
   background: var(--card); font-size: 15px; user-select: none;
 }
 .opt input:checked + span { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); font-weight: 600; }
 .opt input:focus-visible + span { outline: 2px solid var(--brand); outline-offset: 2px; }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
-.seg .opt span { display: block; text-align: center; border: 0; background: transparent; border-radius: 9px; }
+.seg .opt > span { display: block; text-align: center; border: 0; background: transparent; border-radius: 9px; }
 .seg .opt input:checked + span { background: var(--card); color: var(--brand); box-shadow: var(--shadow); }
 
 /* ---------- 底部彈出視窗 ---------- */
@@ -279,8 +279,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); out
 .av-stack .av + .av { margin-left: -6px; }
 .h-av { display: flex; align-items: center; gap: 8px; }
 .me-btn { border: 0; background: transparent; padding: 0; border-radius: 50%; }
-.opt span:has(.av), .chip.av-chip { display: inline-flex; align-items: center; gap: 6px; }
-.opt span:has(.av) { padding: 5px 14px 5px 5px; }
+.opt > span:has(.av), .chip.av-chip { display: inline-flex; align-items: center; gap: 6px; }
+.opt > span:has(.av) { padding: 5px 14px 5px 5px; }
 .chip.av-chip { padding: 4px 12px 4px 4px; }
 
 /* 首頁旅程卡 */
@@ -336,7 +336,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); out
 
 /* 幣別選擇 */
 .cur-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.cur-opt span { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border-radius: 12px; font-size: 13px; font-weight: 700; }
+.cur-opt > span { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border-radius: 12px; font-size: 13px; font-weight: 700; }
 .cur-opt span b { font-size: 24px; line-height: 1.2; }
 .cur-opt span small { font-weight: 400; font-size: 11px; opacity: .8; }
 
@@ -463,3 +463,34 @@ details.field > summary { cursor: pointer; }
 .tbl th:first-child, .tbl td:first-child { white-space: nowrap; }
 .people .p-total div + div { font-size: .82em; }
 .search-box input { width: 100%; border-radius: 12px; border: 1px solid var(--line); -webkit-appearance: none; appearance: none; }
+
+/* ================= v5 ================= */
+/* 選人按鈕：頭像＋名字是同一顆按鈕，名字不能自己有底色 */
+.opt-name { background: none; border: 0; padding: 0; color: inherit; }
+.opt input:checked + span .av { box-shadow: 0 0 0 2px var(--brand-ink); }
+.items-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.items-btns .btn + .btn { margin-top: 0; }
+.items-block.mode-items .items-label { font-size: 15px; color: var(--text); }
+.items-block.mode-items .items-btns .btn { padding: 10px 16px; font-size: 15px; }
+.paste-example { background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 13px; margin: 0 0 8px; white-space: pre-wrap; }
+textarea { width: 100%; padding: 11px 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; resize: vertical; }
+.split-hint:empty { display: none; }
+.cat-hint { font-weight: 400; }
+.title-btn { border: 0; background: transparent; padding: 0; text-align: left; flex: 1; min-width: 0; }
+.title-btn h1 { display: flex; align-items: center; gap: 6px; }
+.trip-card2 { display: flex; align-items: center; padding: 0; overflow: hidden; }
+.trip-open2 { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; border: 0; background: transparent; text-align: left; padding: 14px 4px 14px 16px; }
+.trip-open2:active { background: var(--brand-soft); }
+.trip-open2 .mid { flex: 1; min-width: 0; }
+.trip-open2 .t { font-weight: 700; font-size: 17px; }
+.trip-card2 .more { font-size: 22px; padding: 14px 16px; color: var(--muted); align-self: stretch; }
+.h-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.trash-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.trash-btns { display: flex; gap: 6px; flex: none; }
+.trash-btns .btn + .btn { margin-top: 0; }
+.rate-row .v { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.rate-row .btn.small { padding: 5px 10px; font-size: 13px; }
+.cash-card { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin-top: 10px; }
+.cash-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.cash-card .kv { padding: 3px 0; }
+.banner.carry { flex-direction: column; align-items: flex-start; }

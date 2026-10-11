@@ -6,13 +6,17 @@
 //   外幣刷卡、還沒出帳      → 先算外幣，標示「待出帳」；補上帳單金額後改算台幣
 //   外幣現金                → 外幣
 //
+// 匯率（1 當地貨幣 = ? 台幣）：每位旅伴各自一個
+//   手動設定 → 自己的換匯紀錄平均（含有填台幣成本的期初現金） → 這趟的預設匯率 → 全體換匯平均 → 刷卡預估
+//   換算一律用「付款人」的匯率，因為那是付款人實際換到這筆錢的成本。
+//
 // 結算方式（每趟旅程可選，隨時切換）
 //   split 分幣別  → 外幣歸外幣、台幣歸台幣，各自結算，不換算
-//   twd   全換台幣 → 外幣 × 這趟的結算匯率
-//   local 全換外幣 → 台幣 ÷ 這趟的結算匯率
-//   結算匯率：手動設定 → 換匯紀錄平均 → 刷卡預估匯率
+//   twd   全換台幣 → 外幣 × 付款人的匯率
+//   local 全換外幣 → 台幣 ÷ 付款人的匯率
 //
 // 分攤規則
+//   個人   → 付款人自己的花費，不分給別人
 //   平分   → 勾選的人平均分
 //   逐項分 → 每個品項算給指定的人（指定多人就平分）；沒指定的品項由這趟全部旅伴平分；
 //            收據總額和品項合計的差額（稅、折扣、服務費）依各人品項金額比例分攤
@@ -24,6 +28,7 @@ const roundCur = (n, cur) => { const p = 10 ** decimals(cur); return Math.round(
 /** 回傳 { 成員id: 比例 }，比例總和為 1 */
 export function shareFractions(e, memberIds) {
   const valid = new Set(memberIds);
+  if (e.splitMode === 'self' && valid.has(e.paidBy)) return { [e.paidBy]: 1 };
   const items = (e.items || []).filter((it) => (it.amount || 0) !== 0);
   if (e.splitMode === 'items' && items.length) {
     const sums = {};
@@ -45,35 +50,47 @@ export function shareFractions(e, memberIds) {
   return Object.fromEntries(who.map((id) => [id, 1 / who.length]));
 }
 
-/** 這趟旅程的匯率資訊（1 當地貨幣 = ? 台幣） */
+/** 這趟旅程的匯率資訊 */
 export function tripRates(trip, exchanges) {
   const own = exchanges.filter((x) => !x.currency || x.currency === trip.currency);
-  const f = own.reduce((a, x) => a + (x.foreignAmount || 0), 0);
-  const t = own.reduce((a, x) => a + (x.twdAmount || 0), 0);
-  const avgRate = f > 0 ? t / f : null;
-  const memberRate = {};
+  // 只有填了台幣成本的才能算匯率（ATM 提款還沒出帳時可能沒有）
+  const priced = own.filter((x) => x.twdAmount > 0 && x.foreignAmount > 0);
+  const sum = (l, k) => l.reduce((a, x) => a + (x[k] || 0), 0);
+  const avgRate = priced.length ? sum(priced, 'twdAmount') / sum(priced, 'foreignAmount') : null;
+  const cash = trip.cash || {};
+  const manual = trip.memberRates || {};
+  const fallback = trip.settleRate || avgRate || trip.estRate || null;
+  const fallbackSource = trip.settleRate ? 'trip' : avgRate ? 'all' : trip.estRate ? 'est' : null;
+  const autoRate = {}, memberRate = {}, memberRateSource = {};
   for (const m of trip.members || []) {
-    const l = own.filter((x) => x.member === m.id);
-    const ff = l.reduce((a, x) => a + (x.foreignAmount || 0), 0);
-    memberRate[m.id] = ff > 0 ? l.reduce((a, x) => a + (x.twdAmount || 0), 0) / ff : null;
+    const l = priced.filter((x) => x.member === m.id);
+    let f = sum(l, 'foreignAmount'), t = sum(l, 'twdAmount');
+    const op = cash[m.id];
+    if (op?.opening > 0 && op?.openingTwd > 0) { f += op.opening; t += op.openingTwd; }
+    autoRate[m.id] = f > 0 ? t / f : null;
+    if (manual[m.id] > 0) { memberRate[m.id] = manual[m.id]; memberRateSource[m.id] = 'manual'; }
+    else if (autoRate[m.id]) { memberRate[m.id] = autoRate[m.id]; memberRateSource[m.id] = 'own'; }
+    else { memberRate[m.id] = fallback; memberRateSource[m.id] = fallbackSource; }
   }
-  const rate = trip.settleRate || avgRate || trip.estRate || null;
-  const rateSource = trip.settleRate ? 'manual' : avgRate ? 'exchange' : trip.estRate ? 'est' : null;
+  const rateOf = (id) => (id in memberRate ? memberRate[id] : fallback);
   const cardRate = trip.estRate || avgRate || trip.settleRate || null;
-  return { rate, rateSource, avgRate, memberRate, cardRate };
+  return { rate: fallback, rateSource: fallbackSource, avgRate, autoRate, memberRate, memberRateSource, rateOf, cardRate };
 }
 
-/** 一筆支出：結算幣別、金額、約合台幣 */
+/** 一筆支出：結算幣別、金額、約合台幣、約合當地貨幣 */
 export function expenseValue(e, trip, rates) {
-  if (e.currency === 'TWD') return { cur: 'TWD', amt: e.amount, twd: e.amount, kind: 'twd' };
-  if (e.method === 'card' && e.billedTwd != null) return { cur: 'TWD', amt: e.billedTwd, twd: e.billedTwd, kind: 'billed' };
   const isLocal = e.currency === trip.currency;
+  const pr = rates.rateOf(e.paidBy);
+  const toLocal = (twd) => (pr ? twd / pr : null);
+  if (e.currency === 'TWD') return { cur: 'TWD', amt: e.amount, twd: e.amount, local: toLocal(e.amount), kind: 'twd' };
+  if (e.method === 'card' && e.billedTwd != null) {
+    return { cur: 'TWD', amt: e.billedTwd, twd: e.billedTwd, local: isLocal ? e.amount : toLocal(e.billedTwd), kind: 'billed' };
+  }
   if (e.method === 'card') {
     const r = isLocal ? rates.cardRate : null;
-    return { cur: e.currency, amt: e.amount, twd: r ? e.amount * r : null, kind: 'pending' };
+    return { cur: e.currency, amt: e.amount, twd: r ? e.amount * r : null, local: isLocal ? e.amount : null, kind: 'pending' };
   }
-  const r = isLocal ? rates.rate : null;
-  return { cur: e.currency, amt: e.amount, twd: r ? e.amount * r : null, kind: 'cash' };
+  return { cur: e.currency, amt: e.amount, twd: isLocal && pr ? e.amount * pr : null, local: isLocal ? e.amount : null, kind: 'cash' };
 }
 
 /** 依金額把餘額配對成轉帳（最少次數的貪婪法） */
@@ -107,24 +124,30 @@ export function calc(data, mode = 'split') {
   const rates = tripRates(trip, exchanges);
   const per = {};
   for (const id of ids) {
-    per[id] = { paid: {}, share: {}, paidTwd: 0, shareTwd: 0, shareNoRate: 0, cats: {}, exF: 0, exT: 0, cashUsedF: 0 };
+    per[id] = {
+      paid: {}, share: {}, paidTwd: 0, shareTwd: 0, paidLocal: 0, shareLocal: 0, shareNoRate: 0, cats: {},
+      exF: 0, exT: 0, cashUsedF: 0,
+    };
   }
   const byCur = {};
-  let totalTwd = 0, noRate = 0;
+  let totalTwd = 0, noRate = 0, noTwd = 0, noLocal = 0;
   const rows = expenses.map((e) => ({ ...e, val: expenseValue(e, trip, rates), fractions: shareFractions(e, ids) }));
   for (const r of rows) {
-    const { cur, amt, twd } = r.val;
+    const { cur, amt, twd, local } = r.val;
     addTo(byCur, cur, amt);
-    if (twd != null) totalTwd += twd; else noRate++;
+    if (twd != null) totalTwd += twd; else { noRate++; noTwd++; }
+    if (local == null) noLocal++;
     if (per[r.paidBy]) {
       addTo(per[r.paidBy].paid, cur, amt);
       if (twd != null) per[r.paidBy].paidTwd += twd;
+      if (local != null) per[r.paidBy].paidLocal += local;
       if (r.currency === trip.currency && r.method === 'cash') per[r.paidBy].cashUsedF += r.amount;
     }
     for (const [id, f] of Object.entries(r.fractions)) {
       if (!per[id]) continue;
       addTo(per[id].share, cur, amt * f);
-      if (twd != null) { per[id].shareTwd += twd * f; addTo(per[id].cats, r.category, twd * f); } else per[id].shareNoRate++;
+      if (local != null) per[id].shareLocal += local * f;
+      if (twd != null) { per[id].shareTwd += twd * f; addTo(per[id].cats, r.category || 'none', twd * f); } else per[id].shareNoRate++;
     }
   }
   for (const x of exchanges) {
@@ -134,29 +157,41 @@ export function calc(data, mode = 'split') {
     }
   }
 
+  // 外幣現金對帳：應剩 = 期初現金 + 換匯／提款 − 自己用現金付的
+  const cashCheck = {};
+  for (const id of ids) {
+    const c = (trip.cash || {})[id] || {};
+    const opening = c.opening || 0;
+    const expected = opening + per[id].exF - per[id].cashUsedF;
+    const counted = c.counted ?? null;
+    const used = opening || per[id].exF || per[id].cashUsedF || counted != null;
+    cashCheck[id] = {
+      opening, openingTwd: c.openingTwd ?? null, openingFrom: c.openingFrom || null,
+      exchanged: per[id].exF, spent: per[id].cashUsedF, expected, counted,
+      diff: counted != null ? counted - expected : null, used: !!used,
+    };
+  }
+
   // 結算
   const curs = Object.keys(byCur).sort((a, b) => (a === 'TWD') - (b === 'TWD'));
   let usedMode = mode;
-  // 全換時只能換「當地貨幣 ↔ 台幣」，還有第三種幣別或沒有匯率就退回分幣別
-  const convertible = rates.rate && curs.every((c) => c === 'TWD' || c === trip.currency);
+  // 全換時每一筆都要換得過去（付款人有匯率、沒有第三種幣別），否則退回分幣別
+  const convertible = mode === 'twd' ? noTwd === 0 : mode === 'local' ? noLocal === 0 : true;
   if (mode !== 'split' && !convertible) usedMode = 'split';
   const balances = {}; // cur -> [{id, v}]
   if (usedMode === 'split') {
     for (const c of curs) balances[c] = ids.map((id) => ({ id, v: (per[id].paid[c] || 0) - (per[id].share[c] || 0) }));
+  } else if (usedMode === 'twd') {
+    balances.TWD = ids.map((id) => ({ id, v: per[id].paidTwd - per[id].shareTwd }));
   } else {
-    const target = usedMode === 'twd' ? 'TWD' : trip.currency;
-    const conv = (obj) => Object.entries(obj).reduce((a, [c, v]) => {
-      if (c === target) return a + v;
-      return a + (target === 'TWD' ? v * rates.rate : v / rates.rate);
-    }, 0);
-    balances[target] = ids.map((id) => ({ id, v: conv(per[id].paid) - conv(per[id].share) }));
+    balances[trip.currency] = ids.map((id) => ({ id, v: per[id].paidLocal - per[id].shareLocal }));
   }
   const settlements = Object.entries(balances).map(([cur, b]) => ({ cur, balances: b, transfers: settle(b, cur) }));
 
   const isPendingBill = (r) => r.currency !== 'TWD' && r.method === 'card' && r.billedTwd == null;
   return {
-    rows, per, rates, byCur, curs, totalTwd, noRate,
-    mode: usedMode, requestedMode: mode, convertible: !!convertible, settlements,
+    rows, per, rates, byCur, curs, totalTwd, noRate, cashCheck,
+    mode: usedMode, requestedMode: mode, convertible, settlements,
     pendingN: rows.filter(isPendingBill).length,
     isPendingBill,
   };
@@ -196,7 +231,7 @@ export function ledgerStats(tripsData, { year = 'all', memberId = 'all' } = {}) 
       if (r.val.twd == null) { noRate++; continue; }
       const v = r.val.twd * f;
       tTwd += v;
-      addTo(byCat, r.category || 'other', v);
+      addTo(byCat, r.category || 'none', v);
       if (memberId === 'all') for (const [id, fr] of Object.entries(r.fractions)) addTo(byMember, id, r.val.twd * fr);
       if (f > 0) {
         if (r.title) addTo(storeCount, r.title, 1);

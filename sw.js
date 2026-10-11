@@ -1,6 +1,6 @@
 // Service worker：讓 App 在沒網路時也能打開。
 // 自己的檔案「先抓網路、失敗才用快取」，所以更新程式後重新整理就會拿到新版。
-const CACHE = 'tl-v4';
+const CACHE = 'tl-v5';
 const LIB_CACHE = 'tl-lib'; // 外部程式庫另外存，App 更新版本時不用重新下載
 const SHELL = [
   './', './index.html', './style.css', './app.js', './store.js', './firebase-config.js',

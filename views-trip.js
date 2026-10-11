@@ -1,10 +1,30 @@
 // 單一旅程的四個頁籤：帳目、結算、換匯、設定
-import { S, getMe, member, memberName, ledgerMembers } from './state.js';
+import { S, getMe, member, memberName, ledgerMembers, allTrips } from './state.js';
 import { calc, decimals } from './calc.js';
 import { fmtRange, tripDays } from './calendar.js';
 import {
   CATS, catOf, flag, curName, esc, fmt, twd, fx, money, moneyMulti, moneyLines, rateStr, dayLabel, avatar,
 } from './ui.js';
+
+const RATE_SRC = { manual: '手動設定', own: '自己的換匯平均', trip: '這趟預設匯率', all: '全體換匯平均', est: '刷卡預估匯率' };
+
+/** 每位旅伴的匯率清單 */
+function memberRatesHTML(trip, c) {
+  return trip.members.map((m) => {
+    const r = c.rates.memberRate[m.id];
+    return `<div class="kv rate-row"><span class="k h-av">${avatar(m, 22)} ${esc(m.name)}</span>
+      <span class="v">${r ? `${rateStr(r)} <small class="muted">${RATE_SRC[c.rates.memberRateSource[m.id]] || ''}</small>` : '<span class="muted">未設定</span>'}
+      <button class="btn small secondary" data-act="edit-rate" data-id="${esc(m.id)}">設定</button></span></div>`;
+  }).join('');
+}
+
+/** 同幣別的上一趟旅程（用來把剩下的外幣現金帶過來） */
+export function previousTripSameCurrency(trip) {
+  return allTrips()
+    .filter((d) => d.trip.id !== trip.id && d.trip.currency === trip.currency
+      && (d.trip.endDate || d.trip.startDate || '') <= (trip.startDate || '9999') && (d.trip.startDate || ''))
+    .sort((a, b) => (b.trip.endDate || b.trip.startDate || '').localeCompare(a.trip.endDate || a.trip.startDate || ''))[0] || null;
+}
 
 const SETTLE_LABEL = (cur) => ({ split: '分幣別', twd: '全換台幣', local: `全換${curName(cur)}` });
 
@@ -60,7 +80,8 @@ export function listTab(d) {
     const cat = catOf(r.category);
     const ids = Object.keys(r.fractions);
     let split;
-    if (r.splitMode === 'items') split = '逐項分';
+    if (r.splitMode === 'self') split = `${esc(memberName(r.paidBy))} 個人`;
+    else if (r.splitMode === 'items') split = '逐項分';
     else if (ids.length === trip.members.length && ids.length > 1) split = '大家分';
     else if (ids.length === 1) split = `${esc(memberName(ids[0]))}自己`;
     else split = `${ids.length} 人分`;
@@ -108,7 +129,6 @@ export function settleTab(d) {
   const me = getMe();
   const lbl = SETTLE_LABEL(trip.currency);
   const usedCats = CATS.filter((cat) => members.some((m) => c.per[m.id].cats[cat.id]));
-  const srcLabel = { manual: '手動設定', exchange: '換匯紀錄平均', est: '刷卡預估匯率' }[c.rates.rateSource] || '';
   return `
     <div class="card">
       <h3>結算方式</h3>
@@ -116,13 +136,11 @@ export function settleTab(d) {
         <label class="opt"><input type="radio" name="settleMode" value="${k}" data-act="settle-mode" ${(trip.settleMode || 'split') === k ? 'checked' : ''}><span>${lbl[k]}</span></label>`).join('')}</div>
       <p class="small muted" style="margin:8px 0 0">${{
         split: '外幣現金用外幣結、刷卡出帳和台幣支出用台幣結，不做換算。',
-        twd: '外幣金額用下面的結算匯率換成台幣，最後只結一筆台幣。',
-        local: `台幣金額用下面的結算匯率換成${curName(trip.currency)}，最後只結一筆${curName(trip.currency)}。`,
+        twd: '每一筆外幣用「付款人」的匯率換成台幣，最後只結一筆台幣。',
+        local: `每一筆台幣用「付款人」的匯率換成${curName(trip.currency)}，最後只結一筆${curName(trip.currency)}。`,
       }[trip.settleMode || 'split']}</p>
-      <div class="kv" style="margin-top:6px"><span class="k">結算匯率</span>
-        <span class="v">${c.rates.rate ? `1 ${esc(trip.currency)} = ${rateStr(c.rates.rate)} TWD（${srcLabel}）` : '尚未設定'}
-        <button class="btn small secondary" data-act="edit-trip">設定</button></span></div>
-      ${c.mode !== c.requestedMode ? `<div class="banner" style="margin:8px 0 0">${c.rates.rate ? '這趟有第三種幣別的支出，無法全部換算，暫時用分幣別結算。' : '還沒有結算匯率：請新增換匯紀錄，或在「設定」填結算匯率。'}</div>` : ''}
+      ${(trip.settleMode || 'split') !== 'split' ? `<div class="rate-list"><div class="small muted" style="margin:8px 0 2px">每個人的匯率（1 ${esc(trip.currency)} = ? TWD）</div>${memberRatesHTML(trip, c)}</div>` : ''}
+      ${c.mode !== c.requestedMode ? `<div class="banner" style="margin:8px 0 0">有人還沒有匯率，或這趟有第三種幣別的支出，暫時用分幣別結算。請到「換匯」新增紀錄或設定匯率。</div>` : ''}
     </div>
     ${c.pendingN ? `<div class="banner">ⓘ 有 ${c.pendingN} 筆刷卡還沒出帳，暫時用外幣計算；補上帳單台幣金額後會改用台幣結算。</div>` : ''}
     <div class="card">
@@ -166,36 +184,65 @@ export function exchangeTab(d) {
   const cur = trip.currency;
   const me = getMe();
   const list = [...exchanges].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0));
+  // 上一趟同幣別旅程剩下的現金，可以一鍵帶入成這趟的期初現金
+  const prev = previousTripSameCurrency(trip);
+  let carry = '';
+  if (prev) {
+    const pc = calc(prev, 'split');
+    const left = trip.members
+      .map((m) => ({ m, cc: pc.cashCheck[m.id] }))
+      .filter(({ m, cc }) => cc && cc.used && (cc.counted ?? cc.expected) > 0 && !((trip.cash || {})[m.id]?.opening));
+    if (left.length) {
+      carry = `<div class="banner info carry">
+        <div>上一趟「${esc(prev.trip.name)}」還剩：${left.map(({ m, cc }) => `${esc(m.name)} ${fx(cc.counted ?? cc.expected, cur)}`).join('、')}</div>
+        <button class="btn small" data-act="carry-cash" data-id="${esc(prev.trip.id)}">帶入成這趟的期初現金</button></div>`;
+    }
+  }
+  const diffHTML = (cc) => {
+    if (cc.counted == null) return '<span class="muted">還沒點算</span>';
+    const eps = ['JPY', 'KRW', 'VND', 'IDR', 'TWD'].includes(cur) ? 0.5 : 0.005;
+    if (Math.abs(cc.diff) < eps) return '<span class="pos">✅ 一致</span>';
+    return cc.diff < 0
+      ? `<span class="neg">少了 ${fx(-cc.diff, cur)}</span><div class="small muted">可能有現金支出還沒記</div>`
+      : `<span class="neg">多了 ${fx(cc.diff, cur)}</span><div class="small muted">可能記重複，或有退款、找零沒記到</div>`;
+  };
   return `
+    ${carry}
     <div class="card">
-      <h3>💱 這趟的匯率</h3>
-      <div class="kv"><span class="k">換匯平均</span><span class="v">${c.rates.avgRate ? `1 ${esc(cur)} = ${rateStr(c.rates.avgRate)} TWD` : '尚無紀錄'}</span></div>
-      <div class="kv"><span class="k">結算匯率</span><span class="v">${c.rates.rate ? rateStr(c.rates.rate) : '—'}${trip.settleRate ? '（手動）' : ''}</span></div>
-      <div class="kv"><span class="k">刷卡預估</span><span class="v">${c.rates.cardRate ? rateStr(c.rates.cardRate) : '—'}</span></div>
-      <p class="small muted" style="margin:6px 0 0">換匯紀錄只是記錄，不一定要換算。要換算時，在「結算」選全換台幣或全換${esc(curName(cur))}。</p>
+      <h3>💱 每個人的匯率</h3>
+      <p class="small muted" style="margin:-4px 0 6px">1 ${esc(cur)} = ? TWD。外幣現金換算台幣時，用「付款人」的匯率。</p>
+      ${memberRatesHTML(trip, c)}
+      <div class="kv small" style="margin-top:6px"><span class="k">全體換匯平均</span><span class="v">${c.rates.avgRate ? rateStr(c.rates.avgRate) : '—'}</span></div>
+      <div class="kv small"><span class="k">刷卡預估匯率</span><span class="v">${c.rates.cardRate ? rateStr(c.rates.cardRate) : '—'}</span></div>
     </div>
-    ${trip.members.map((m) => {
-      const p = c.per[m.id];
-      if (!p.exF && !p.cashUsedF) return '';
-      return `<div class="card">
-        <h3 class="h-av">${avatar(m, 24)} ${esc(m.name)}${m.id === me ? '（我）' : ''} 的${esc(curName(cur))}現金</h3>
-        <div class="kv"><span class="k">換匯總額</span><span class="v">${flag(cur)} ${fx(p.exF, cur)}（${twd(p.exT)}）</span></div>
-        <div class="kv"><span class="k">平均匯率</span><span class="v">${p.exF ? rateStr(c.rates.memberRate[m.id]) : '—'}</span></div>
-        <div class="kv"><span class="k">現金已花（自己付的）</span><span class="v">${fx(p.cashUsedF, cur)}</span></div>
-        <div class="kv"><span class="k">剩餘現金（推算）</span><span class="v"><b>${fx(p.exF - p.cashUsedF, cur)}</b></span></div>
-      </div>`;
-    }).join('')}
-    <button class="btn" data-act="add-exchange">＋ 新增換匯紀錄</button>
-    <div class="day" style="margin-top:20px"><span>換匯紀錄</span></div>
+    <div class="card">
+      <h3>👛 ${esc(curName(cur))}現金對帳</h3>
+      <p class="small muted" style="margin:-4px 0 6px">應剩 = 期初現金 ＋ 換匯／提款 − 自己用現金付的。旅程結束時點一下錢包，輸入實際剩下的金額。</p>
+      ${trip.members.map((m) => {
+        const cc = c.cashCheck[m.id];
+        return `<div class="cash-card">
+          <div class="cash-head"><span class="h-av">${avatar(m, 24)} <b>${esc(m.name)}</b>${m.id === me ? '（我）' : ''}</span>
+            <button class="btn small secondary" data-act="edit-cash" data-id="${esc(m.id)}">期初／點算</button></div>
+          <div class="kv"><span class="k">期初現金${cc.openingFrom ? `<small class="muted">（${esc(cc.openingFrom)}）</small>` : ''}</span><span class="v">${fx(cc.opening, cur)}</span></div>
+          <div class="kv"><span class="k">＋ 換匯／提款</span><span class="v">${fx(cc.exchanged, cur)}</span></div>
+          <div class="kv"><span class="k">− 現金支出</span><span class="v">${fx(cc.spent, cur)}</span></div>
+          <div class="kv"><span class="k"><b>應剩</b></span><span class="v"><b>${fx(cc.expected, cur)}</b></span></div>
+          <div class="kv"><span class="k">實際點算</span><span class="v">${cc.counted != null ? fx(cc.counted, cur) : '—'}</span></div>
+          <div class="kv"><span class="k">差額</span><span class="v">${diffHTML(cc)}</span></div>
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="btn" data-act="add-exchange">＋ 新增換匯／提款紀錄</button>
+    <div class="day" style="margin-top:20px"><span>換匯／提款紀錄</span></div>
     <div class="list">
       ${list.length ? list.map((x) => `
         <button class="item" data-act="edit-exchange" data-id="${esc(x.id)}">
-          <span class="ic">💱<span class="ic-av">${avatar(member(x.member), 18)}</span></span>
-          <span class="mid"><div class="t">${esc(memberName(x.member))} 換匯</div>
+          <span class="ic">${x.kind === 'atm' ? '🏧' : '💱'}<span class="ic-av">${avatar(member(x.member), 18)}</span></span>
+          <span class="mid"><div class="t">${esc(memberName(x.member))} ${x.kind === 'atm' ? 'ATM 提款' : '換匯'}</div>
             <div class="s">${dayLabel(x.date)}${x.note ? ' · ' + esc(x.note) : ''}</div></span>
           <span class="amt"><div class="f">${flag(cur)} ${fx(x.foreignAmount, cur)}</div>
-            <div class="tw">🇹🇼 ${twd(x.twdAmount)} · ${rateStr(x.twdAmount / x.foreignAmount)}</div></span>
-        </button>`).join('') : '<div class="empty">還沒有換匯紀錄。<br>記下換了多少外幣、花多少台幣，就知道這趟的匯率。</div>'}
+            <div class="tw">${x.twdAmount ? `🇹🇼 ${twd(x.twdAmount)} · ${rateStr(x.twdAmount / x.foreignAmount)}` : '<span class="tag warn">台幣金額待補</span>'}</div></span>
+        </button>`).join('') : '<div class="empty">還沒有換匯紀錄。<br>記下換了多少外幣、花多少台幣，就知道每個人的匯率。</div>'}
     </div>`;
 }
 
@@ -209,7 +256,7 @@ export function tripSettingsTab(d) {
       <div class="kv"><span class="k">名稱</span><span class="v">${esc(trip.name)}</span></div>
       <div class="kv"><span class="k">日期</span><span class="v">${trip.startDate ? esc(fmtRange(trip.startDate, trip.endDate)) : '未設定'}</span></div>
       <div class="kv"><span class="k">當地貨幣</span><span class="v">${flag(trip.currency)} ${esc(curName(trip.currency))} ${esc(trip.currency)}</span></div>
-      <div class="kv"><span class="k">結算匯率</span><span class="v">${trip.settleRate ? rateStr(trip.settleRate) : '未設定（用換匯平均）'}</span></div>
+      <div class="kv"><span class="k">預設匯率</span><span class="v">${trip.settleRate ? rateStr(trip.settleRate) : '未設定'}</span></div>
       <div class="kv"><span class="k">刷卡預估匯率</span><span class="v">${trip.estRate ? rateStr(trip.estRate) : '未設定'}</span></div>
       <button class="btn secondary" style="margin-top:8px" data-act="edit-trip">編輯旅程</button>
     </div>
@@ -221,7 +268,11 @@ export function tripSettingsTab(d) {
       <button class="btn secondary" style="margin-top:12px" data-act="add-member" data-to-trip="1">＋ 新增旅伴</button>
     </div>
     <div class="card">
+      <h3>每個人的匯率</h3>
+      ${memberRatesHTML(trip, calc(d, 'split'))}
+    </div>
+    <div class="card">
       <button class="btn danger" data-act="delete-trip" data-id="${esc(trip.id)}">🗑 刪除這趟旅程</button>
-      <p class="small muted">會刪除這趟所有帳目、換匯紀錄、收據照片，帳本裡的所有人都看不到，無法復原。</p>
+      <p class="small muted">刪除後會放進「帳本 → 最近刪除」保留 30 天，期間可以復原。</p>
     </div>`;
 }

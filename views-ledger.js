@@ -1,5 +1,5 @@
 // 帳本層級的畫面：歡迎頁、旅程列表、搜尋、統計、帳本設定
-import { S, getMe, member, memberName, ledgerMembers, myLedgers, allTrips } from './state.js';
+import { S, getMe, member, memberName, ledgerMembers, myLedgers, allTrips, deletedTrips, daysLeft } from './state.js';
 import { calc, ledgerStats } from './calc.js';
 import { searchAll } from './search.js';
 import { fmtRange, ymd } from './calendar.js';
@@ -21,6 +21,8 @@ export function welcomeHTML() {
         <button class="btn secondary" data-act="join-ledger">輸入代碼，加入旅伴的帳本</button>
         <button class="btn secondary" data-act="import-backup">從備份檔還原</button>
       </div>
+      ${myLedgers().filter((l) => l.deletedAt).length ? `<div class="card"><h3>🗑 最近刪除的帳本</h3>
+        ${myLedgers().filter((l) => l.deletedAt).map((l) => `<button class="member-line" data-act="switch-ledger" data-id="${esc(l.id)}"><span class="trip-flag">📒</span><span class="mid">${esc(l.name)} <span class="tag warn">剩 ${daysLeft(l.deletedAt)} 天</span></span><span class="muted">›</span></button>`).join('')}</div>` : ''}
       <p class="small muted center">${S.store?.mode === 'firebase' ? '☁️ 雲端同步已啟用' : '📱 本機模式：資料只存在這支手機，尚未設定雲端同步'}</p>
     </main>`;
 }
@@ -44,21 +46,24 @@ export function tripsTab() {
     const c = calc(d, 'split');
     const ms = trip.members;
     return `${head}
-      <button class="card trip-card trip-open" data-act="open-trip" data-id="${esc(trip.id)}">
-        <span class="trip-flag">${flag(trip.currency)}</span>
-        <span class="mid">
-          <div class="t">${esc(trip.name)} ${status(trip)}</div>
-          <div class="small muted">${trip.startDate ? esc(fmtRange(trip.startDate, trip.endDate)) : '未設定日期'}</div>
-          <div class="small trip-sum">${d.expenses.length ? `${moneyMulti(c.byCur, false)}${c.curs.some((k) => k !== 'TWD') && c.totalTwd ? ` <span class="muted">≈ ${twd(c.totalTwd)}</span>` : ''}` : '<span class="muted">還沒有帳目</span>'}</div>
-          <div class="av-stack">${ms.slice(0, 7).map((m) => avatar(m, 22)).join('')}${ms.length > 7 ? `<span class="av-more">+${ms.length - 7}</span>` : ''}</div>
-        </span>
-        <span class="muted">›</span>
-      </button>`;
+      <div class="card trip-card2">
+        <button class="trip-open2" data-act="open-trip" data-id="${esc(trip.id)}">
+          <span class="trip-flag">${flag(trip.currency)}</span>
+          <span class="mid">
+            <div class="t">${esc(trip.name)} ${status(trip)}</div>
+            <div class="small muted">${trip.startDate ? esc(fmtRange(trip.startDate, trip.endDate)) : '未設定日期'}</div>
+            <div class="small trip-sum">${d.expenses.length ? `${moneyMulti(c.byCur, false)}${c.curs.some((k) => k !== 'TWD') && c.totalTwd ? ` <span class="muted">≈ ${twd(c.totalTwd)}</span>` : ''}` : '<span class="muted">還沒有帳目</span>'}</div>
+            <div class="av-stack">${ms.slice(0, 7).map((m) => avatar(m, 22)).join('')}${ms.length > 7 ? `<span class="av-more">+${ms.length - 7}</span>` : ''}</div>
+          </span>
+        </button>
+        <button class="icon-btn more" data-act="trip-menu" data-id="${esc(trip.id)}" aria-label="更多">⋯</button>
+      </div>`;
   }).join('');
   return `
     ${S.ld.pending ? '<p class="small muted center">同步中…</p>' : ''}
     ${cards || `<div class="card empty">這本帳本還沒有旅程。<br>按下面的按鈕新增第一趟吧！</div>`}
-    <button class="btn" style="margin-top:12px" data-act="new-trip">＋ 新增旅程</button>`;
+    <button class="btn" style="margin-top:12px" data-act="new-trip">＋ 新增旅程</button>
+    ${deletedTrips().length ? `<button class="btn secondary" data-act="open-trash">🗑 最近刪除（${deletedTrips().length}）</button>` : ''}`;
 }
 
 /* ---------- 搜尋 ---------- */
@@ -166,7 +171,7 @@ export function ledgerSettingsTab() {
   const others = myLedgers().filter((x) => x.id !== ledger.id);
   return `
     <div class="card">
-      <h3>帳本</h3>
+      <h3 class="h-row">帳本 <button class="btn small secondary" data-act="rename-ledger">✏️ 編輯名稱</button></h3>
       <div class="field" style="display:flex;gap:8px"><input id="ledger-name" value="${esc(ledger.name)}" aria-label="帳本名稱">
         <button class="btn small secondary" data-act="save-ledger-name">儲存</button></div>
       <div class="small muted">帳本代碼（旅伴加入、換手機時都用這個）</div>
@@ -215,9 +220,14 @@ export function ledgerSettingsTab() {
         <button class="btn secondary" data-act="join-ledger">加入帳本</button></div>
     </div>
     <div class="card">
+      <h3>🗑 最近刪除</h3>
+      <p class="small muted" style="margin-top:-4px">刪除的旅程會保留 ${30} 天，期間可以復原或立即永久刪除。</p>
+      <button class="btn secondary" data-act="open-trash">打開最近刪除（${deletedTrips().length}）</button>
+    </div>
+    <div class="card">
       <button class="btn danger" data-act="forget-ledger">從這支手機移除此帳本</button>
       <button class="btn danger" data-act="delete-ledger">🗑 刪除整本帳本（所有人）</button>
-      <p class="small muted">「移除」只是這支手機不再顯示，之後可再用代碼加入；「刪除」會把所有旅程、帳目、收據照片一起刪掉，無法復原。</p>
+      <p class="small muted">「移除」只是這支手機不再顯示，之後可再用代碼加入；「刪除」會放進最近刪除保留 30 天，期間所有成員都可以復原。</p>
     </div>
-    <p class="small muted center">${S.store.mode === 'firebase' ? '☁️ 雲端同步' : '📱 本機模式'} · v4</p>`;
+    <p class="small muted center">${S.store.mode === 'firebase' ? '☁️ 雲端同步' : '📱 本機模式'} · v5</p>`;
 }
