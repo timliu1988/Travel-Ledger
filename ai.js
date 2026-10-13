@@ -4,7 +4,7 @@
 import { FIREBASE_VERSION } from './store.js';
 
 // 依序嘗試：第一個的免費額度用完時自動換下一個。Google 推出新模型時改這裡即可。
-const MODELS = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 let firebaseApp = null;
 let aiPromise = null;
 let lastModel = ''; // 最近一次實際用到的模型（顯示在辨識結果上）
@@ -34,6 +34,9 @@ export const shortErr = (e) => String(e?.message || e)
   .replace(/https:\/\/\S+?(:generateContent|:countTokens)?(?=[:\s]|$)/g, '')
   .replace(/^AI:\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 300);
 
+/** 某個模型太久沒回應（尖峰時段可能卡很久），就放棄改試下一個 */
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`timeout：超過 ${ms / 1000} 秒沒回應`)), ms))]);
+
 /** 依序嘗試模型：第一個額度用完（429）或暫時不能用時，換下一個 */
 async function generate(parts) {
   if (window.__tlAiMock) return window.__tlAiMock(parts);
@@ -46,7 +49,7 @@ async function generate(parts) {
         model: name,
         generationConfig: { responseMimeType: 'application/json' }, // Gemini 3 不支援 temperature 等參數，不要加
       });
-      const res = await model.generateContent(parts);
+      const res = await withTimeout(model.generateContent(parts), 45000);
       lastModel = name;
       return res.response.text();
     } catch (e) {
@@ -54,7 +57,7 @@ async function generate(parts) {
       tried.push(`${name}：${shortErr(e)}`);
       console.warn('Gemini', name, e);
       const msg = String(e?.message || e);
-      if (!/429|quota|RESOURCE_EXHAUSTED|503|UNAVAILABLE|not found|404/i.test(msg)) break;
+      if (!/429|quota|RESOURCE_EXHAUSTED|500|503|UNAVAILABLE|high demand|overloaded|timeout|not found|404/i.test(msg)) break;
     }
   }
   const err = friendly(lastErr);
@@ -68,6 +71,8 @@ function friendly(e) {
   if (/SERVICE_DISABLED|has not been used|is disabled|API_KEY_SERVICE_BLOCKED|blocked/i.test(msg)) return new Error('Firebase 專案的 AI Logic API 沒有啟用，或 API 金鑰被限制');
   if (/api.*not.*enabled|PERMISSION_DENIED|403/i.test(msg)) return new Error('沒有權限使用 Gemini（AI Logic 沒啟用，或 API 金鑰／App Check 擋住了）');
   if (/404|not found/i.test(msg)) return new Error('找不到可用的 Gemini 模型');
+  if (/500|503|high demand|overloaded|UNAVAILABLE|timeout/i.test(msg)) return new Error('Gemini 目前太忙或沒回應，請稍後再試');
+  if (/App Check/i.test(msg)) return new Error('App Check 驗證沒通過（檢查 firebase-config.js 的 appCheckSiteKey）');
   if (/Failed to fetch|network|NetworkError/i.test(msg)) return new Error('網路連線失敗');
   return new Error('Gemini 辨識失敗：' + shortErr(e).slice(0, 120));
 }
@@ -83,7 +88,7 @@ export async function aiDiagnose() {
     const t = Date.now();
     try {
       const model = mod.m.getGenerativeModel(mod.ai, { model: name });
-      const res = await model.generateContent('只回答兩個字：正常');
+      const res = await withTimeout(model.generateContent('只回答兩個字：正常'), 20000);
       out.push({ model: name, ok: true, msg: `${res.response.text().trim().slice(0, 20)}（${((Date.now() - t) / 1000).toFixed(1)} 秒）` });
     } catch (e) {
       out.push({ model: name, ok: false, msg: shortErr(e) });
