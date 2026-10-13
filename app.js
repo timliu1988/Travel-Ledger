@@ -1,4 +1,4 @@
-// 旅伴記帳 v5.1 — 主程式：畫面切換、按鈕事件、啟動
+// 旅伴記帳 v5.2 — 主程式：畫面切換、按鈕事件、啟動
 import { createStore, uid, receiptKey } from './store.js';
 import { calc } from './calc.js';
 import { aiReady, aiTranslateNames, aiDiagnose } from './ai.js';
@@ -9,7 +9,7 @@ import {
 } from './state.js';
 import { $, $$, esc, flag, num, ls, toast, avatar, closeSheet, closeAllSheets, saveFile, openSheet } from './ui.js';
 import { welcomeHTML, tripsTab, searchTab, searchResultsHTML, statsTab, ledgerSettingsTab } from './views-ledger.js';
-import { listTab, settleTab, exchangeTab, tripSettingsTab, previousTripSameCurrency } from './views-trip.js';
+import { listTab, tripRowsHTML, settleTab, exchangeTab, tripSettingsTab, previousTripSameCurrency } from './views-trip.js';
 import {
   nav, needsTranslate, memberUsedInTrip, openTripForm, openMemberForm, openExpenseForm, openExchangeForm,
   openLedgerForm, openJoin, openWhoAmI, openRenameLedger, openRateForm, openCashForm,
@@ -61,6 +61,7 @@ function draw() {
         <button class="icon-btn" data-act="back" aria-label="回到帳本">‹</button>
         <button class="titles title-btn" data-act="edit-trip" aria-label="編輯旅程"><h1>${flag(trip.currency)} ${esc(trip.name)} <span class="caret">✎</span></h1>
           <div class="sub">${trip.startDate ? esc(fmtRange(trip.startDate, trip.endDate)) + ' · ' : ''}${trip.members.length} 人 · ${esc(trip.currency)}</div></button>
+        ${S.tab === 'list' ? `<button class="icon-btn search-btn ${S.tripSearch ? 'on' : ''}" data-act="trip-search" aria-label="搜尋這一趟">🔍</button>` : ''}
         <span class="me-btn">${avatar(me, 34)}</span>
       </header>
       <main>${body}</main>
@@ -110,12 +111,15 @@ function openLedger(id, name) {
       return;
     }
     // 正在輸入搜尋字時，不要重畫整個畫面（避免鍵盤收起來）
-    const typing = document.activeElement?.id === 'q';
+    const typing = ['q', 'tq'].includes(document.activeElement?.id);
     S.ld = ld;
     rememberLedger(id, ld.ledger.name, ld.ledger.deletedAt || null);
     if (S.view === 'trip' && (!ld.trips[S.tripId] || ld.trips[S.tripId].trip.deletedAt) && !ld.pending) { S.view = 'ledger'; toast('這趟旅程已被刪除'); }
     purgeExpired();
-    if (typing) { const box = $('#search-results'); if (box) box.innerHTML = searchResultsHTML(); } else render();
+    if (typing) {
+      const box = $('#search-results'); if (box) box.innerHTML = searchResultsHTML();
+      const tr = $('#trip-rows'); if (tr && tripData()) tr.innerHTML = tripRowsHTML(tripData());
+    } else render();
     if (!S.askedMe && !ledgerMembers().some((m) => m.id === getMe())) { S.askedMe = true; openWhoAmI(); }
     if (Object.values(ld.trips).some((t) => t.expenses.some((x) => x.translatePending))) scheduleTranslate();
   });
@@ -125,6 +129,8 @@ function openTrip(tid, then) {
   S.view = 'trip';
   S.tab = 'list';
   S.filter = 'all';
+  S.tripSearch = false;
+  S.tripQ = '';
   closeAllSheets();
   render();
   window.scrollTo(0, 0);
@@ -466,6 +472,12 @@ document.addEventListener('click', async (ev) => {
     }
     case 'tab': S.tab = el.dataset.tab; render(); window.scrollTo(0, 0); break;
     case 'filter': S.filter = el.dataset.filter; render(); break;
+    case 'trip-search':
+      S.tripSearch = !S.tripSearch;
+      if (!S.tripSearch) S.tripQ = '';
+      render();
+      if (S.tripSearch) setTimeout(() => $('#tq')?.focus(), 50);
+      break;
     case 'goto-noamount': S.tab = 'list'; S.filter = 'noamount'; render(); window.scrollTo(0, 0); break;
     case 'settle-mode': store.updateTrip(S.tripId, { settleMode: el.value }); break;
     // 支出
@@ -502,6 +514,7 @@ document.addEventListener('click', async (ev) => {
     case 'stats-member': S.statsMember = el.dataset.v; render(); break;
     // 設定
     case 'toggle-autoocr': ls.set('tl_autoOcr', el.checked); break;
+    case 'toggle-keepreceipt': ls.set('tl_keepReceipt', el.checked); toast(el.checked ? '收據照片會跟著帳目保存' : '之後拍的收據照片只用來辨識，不會保存'); break;
     case 'ocr-engine': ls.set('tl_ocrEngine', el.value); break;
     case 'ai-test': {
       const box = $('#ai-test-out');
@@ -529,13 +542,20 @@ document.addEventListener('click', async (ev) => {
 
 // 搜尋框：邊打字邊更新結果
 document.addEventListener('input', (ev) => {
+  if (ev.target.id === 'tq') {
+    S.tripQ = ev.target.value;
+    const box = $('#trip-rows');
+    const d = tripData();
+    if (box && d) box.innerHTML = tripRowsHTML(d);
+    return;
+  }
   if (ev.target.id !== 'q') return;
   S.searchQ = ev.target.value;
   const box = $('#search-results');
   if (box) box.innerHTML = searchResultsHTML();
 });
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Enter' && ev.target.id === 'q') ev.target.blur();
+  if (ev.key === 'Enter' && (ev.target.id === 'q' || ev.target.id === 'tq')) ev.target.blur();
   if (ev.key === 'Enter' && ev.target.matches?.('input[data-bill]')) {
     ev.preventDefault();
     document.querySelector(`[data-act="save-bill"][data-id="${CSS.escape(ev.target.dataset.bill)}"]`)?.click();

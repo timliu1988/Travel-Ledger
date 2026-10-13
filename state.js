@@ -12,6 +12,8 @@ export const S = {
   tripId: null,
   tab: 'list',       // 旅程頁籤：list | settle | exchange | settings
   filter: 'all',
+  tripSearch: false, // 旅程內搜尋框是否打開
+  tripQ: '',
   searchQ: '',
   statsYear: 'all',
   statsMember: 'all',

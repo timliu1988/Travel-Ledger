@@ -547,3 +547,18 @@ textarea { width: 100%; padding: 11px 12px; border-radius: 11px; border: 1px sol
 .ai-row.ok b { color: var(--pos); } .ai-row.bad b { color: var(--neg); }
 .ocr-err summary { font-size: 12px; cursor: pointer; }
 .ocr-err pre { white-space: pre-wrap; word-break: break-all; font-size: 11.5px; background: var(--bg); padding: 8px; border-radius: 8px; margin: 4px 0 0; }
+
+/* ================= v5.2 ================= */
+/* 品項：品名｜數量｜單價 */
+.it-top .it-qty { flex: none; width: 52px; min-width: 0; padding: 8px 6px; text-align: center; font-variant-numeric: tabular-nums; }
+.it-line { margin: 4px 2px 0; text-align: right; font-variant-numeric: tabular-nums; }
+.it-line:empty { display: none; }
+/* 旅程內搜尋 */
+header.top .search-btn { font-size: 19px; padding: 6px 8px; }
+header.top .search-btn.on { background: var(--brand-soft); }
+.trip-search { top: calc(env(safe-area-inset-top) + 64px); }
+/* 有收據照片：分類圖示左上角的小記號 */
+.item .ic-rc { position: absolute; left: -6px; top: -6px; display: inline-flex; align-items: center; gap: 1px;
+  font-size: 11px; line-height: 1; padding: 2px 3px; border-radius: 7px; background: var(--card); box-shadow: 0 0 0 1.5px var(--line); color: var(--text); }
+.item .ic-rc b { font-size: 10px; }
+.item .ic-rc .ico { width: 12px; height: 12px; }

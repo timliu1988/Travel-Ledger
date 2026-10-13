@@ -128,7 +128,7 @@ export async function aiReadReceipt(dataUrls, currency) {
 這趟旅行的當地貨幣是 ${currency}。請讀出收據內容，只回傳 JSON，格式如下：
 {
   "store": "店名（原文）",
-  "storeZh": "店名的台灣常用中文名稱，例如 マツモトキヨシ → 松本清；沒有慣用名就音譯或保留原文",
+  "storeZh": "簡短的店名，用台灣慣用的中文名稱，最多加上分店地名，例如 セブン-イレブン 山形幸町店 → 7-11（山形店）、マツモトキヨシ 心斎橋店 → 松本清（心齋橋店）；不要放地址、電話或整串分店全名；沒有慣用中文名就保留原文品牌名",
   "date": "YYYY-MM-DD 或 null",
   "currency": "ISO 幣別代碼，例如 JPY",
   "total": 實際應付總額（數字，含稅，不含找零與預付金額）,
@@ -160,7 +160,7 @@ export async function aiReadReceipt(dataUrls, currency) {
     total: isFinite(num(r.total)) && num(r.total) > 0 ? num(r.total) : null,
     category: ['food', 'transport', 'stay', 'shopping', 'fun', 'other'].includes(r.category) ? r.category : null,
     items: (Array.isArray(r.items) ? r.items : [])
-      .map((it) => ({ name: String(it.name || '').slice(0, 60), nameZh: String(it.nameZh || '').slice(0, 60), amount: num(it.amount) }))
+      .map((it) => ({ name: String(it.name || '').slice(0, 60), nameZh: String(it.nameZh || '').slice(0, 60), qty: num(it.qty) > 0 ? num(it.qty) : 1, amount: num(it.amount) }))
       .filter((it) => isFinite(it.amount) && it.amount !== 0)
       .slice(0, 80),
     text: JSON.stringify(r, null, 1),

@@ -1,6 +1,7 @@
 // 單一旅程的四個頁籤：帳目、結算、換匯、設定
 import { S, getMe, member, memberName, ledgerMembers, allTrips } from './state.js';
 import { calc, decimals } from './calc.js';
+import { norm } from './search.js';
 import { fmtRange, tripDays } from './calendar.js';
 import {
   CATS, catOf, flag, curName, esc, fmt, twd, fx, money, moneyMulti, moneyLines, rateStr, dayLabel, avatar,
@@ -63,12 +64,24 @@ function peopleSummary(d, c) {
 }
 
 /* ---------- 帳目 ---------- */
-export function listTab(d) {
+/** 這一趟裡的搜尋：店名／項目、品項（原文、中文）、備註、付款人、分類、金額，空白分開的每個字都要符合 */
+export function tripSearchMatch(r, q) {
+  const words = String(q || '').trim().split(/\s+/).map(norm).filter(Boolean);
+  if (!words.length) return true;
+  const hay = [r.title, r.note, memberName(r.paidBy), catOf(r.category).name, r.amountPending ? '金額待補' : String(r.amount),
+    ...(r.items || []).flatMap((it) => [it.name, it.nameZh])].map(norm).join('|');
+  return words.every((w) => hay.includes(w));
+}
+
+/** 帳目清單本體（搜尋時只重畫這一塊，鍵盤才不會收起來） */
+export function tripRowsHTML(d) {
   const { trip } = d;
   const c = calc(d, trip.settleMode || 'split');
   let rows = c.rows;
   if (S.filter === 'pending') rows = rows.filter(c.isPendingBill);
   if (S.filter === 'noamount') rows = rows.filter(c.isNoAmount);
+  const q = S.tripSearch ? S.tripQ.trim() : '';
+  if (q) rows = rows.filter((r) => tripSearchMatch(r, q));
   rows = [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0));
   const groups = [];
   for (const r of rows) {
@@ -92,11 +105,12 @@ export function listTab(d) {
     else if (r.val.kind === 'pending') sub = `${r.val.twd != null ? '≈ ' + twd(r.val.twd) + ' ' : ''}<span class="tag warn">待出帳</span>`;
     else if (r.val.kind === 'cash' && r.val.twd != null) sub = `≈ ${twd(r.val.twd)}`;
     const names = (r.items || []).map((it) => it.nameZh || it.name).filter(Boolean);
+    const rc = r.receiptCount ?? (r.hasReceipt ? 1 : 0);
     let html = `
       <button class="item" data-act="edit-expense" data-id="${esc(r.id)}">
-        <span class="ic">${cat.icon}<span class="ic-av">${avatar(member(r.paidBy), 18)}</span></span>
+        <span class="ic">${cat.icon}<span class="ic-av">${avatar(member(r.paidBy), 18)}</span>${rc ? `<span class="ic-rc" aria-label="有 ${rc} 張收據照片">🧾${rc > 1 ? `<b>${rc}</b>` : ''}</span>` : ''}</span>
         <span class="mid"><div class="t">${esc(r.title || cat.name)}</div>
-          <div class="s">${r.method === 'card' ? '💳' : '💵'} ${esc(memberName(r.paidBy))}付 · ${split}${r.hasReceipt ? ` · 🧾${(r.receiptCount || 1) > 1 ? '×' + r.receiptCount : ''}` : ''}</div>
+          <div class="s">${r.method === 'card' ? '💳' : '💵'} ${esc(memberName(r.paidBy))}付 · ${split}</div>
           ${names.length ? `<div class="s s2">${esc(names.slice(0, 4).join('、'))}${names.length > 4 ? `…等 ${names.length} 項` : ''}${r.translatePending ? ' <span class="tag warn">待翻譯</span>' : ''}</div>` : ''}</span>
         <span class="amt"><div class="f"><span class="fl">${flag(r.currency)}</span>${r.amountPending ? '<span class="muted">—</span>' : money(r.amount, r.currency)}</div><div class="tw">${sub}</div></span>
       </button>`;
@@ -106,23 +120,33 @@ export function listTab(d) {
     }
     return html;
   };
-
-  return `
-    ${peopleSummary(d, c)}
-    ${c.noAmountN && S.filter !== 'noamount' ? `<button class="banner" data-act="filter" data-filter="noamount">✏️ 有 ${c.noAmountN} 筆還沒填金額，補上後才會算進結算 ›</button>` : ''}
-    ${c.pendingN && S.filter !== 'pending' ? `<button class="banner" data-act="filter" data-filter="pending">💳 有 ${c.pendingN} 筆刷卡還沒補台幣出帳金額 ›</button>` : ''}
-    <div class="chips">
-      <button class="chip ${S.filter === 'all' ? 'on' : ''}" data-act="filter" data-filter="all">全部</button>
-      <button class="chip ${S.filter === 'pending' ? 'on' : ''}" data-act="filter" data-filter="pending">待補出帳 ${c.pendingN ? `(${c.pendingN})` : ''}</button>
-      ${c.noAmountN || S.filter === 'noamount' ? `<button class="chip ${S.filter === 'noamount' ? 'on' : ''}" data-act="filter" data-filter="noamount">金額待補 ${c.noAmountN ? `(${c.noAmountN})` : ''}</button>` : ''}
-    </div>
+  const empty = q ? `找不到符合「${esc(q)}」的帳目`
+    : S.filter === 'pending' ? '刷卡帳目都已補上台幣金額 👍' : S.filter === 'noamount' ? '金額都補齊了 👍' : '還沒有帳目，按右下角 ＋ 新增第一筆';
+  return `${q ? `<div class="small muted" style="margin:4px 2px 8px">找到 ${rows.length} 筆</div>` : ''}
     ${groups.length ? groups.map((g) => {
       const dayCur = {};
       g.items.forEach((r) => { dayCur[r.val.cur] = (dayCur[r.val.cur] || 0) + r.val.amt; });
       const di = days.indexOf(g.date);
       return `<div class="day"><span>${g.date ? dayLabel(g.date) : '未填日期'}${di >= 0 ? ` · Day ${di + 1}` : ''}</span><span class="num">${Object.values(dayCur).some((v) => Math.abs(v) >= 0.005) ? moneyMulti(dayCur, false) : ''}</span></div>
         <div class="list">${g.items.map(itemHTML).join('')}</div>`;
-    }).join('') : `<div class="list"><div class="empty">${S.filter === 'pending' ? '刷卡帳目都已補上台幣金額 👍' : S.filter === 'noamount' ? '金額都補齊了 👍' : '還沒有帳目，按右下角 ＋ 新增第一筆'}</div></div>`}`;
+    }).join('') : `<div class="list"><div class="empty">${empty}</div></div>`}`;
+}
+
+export function listTab(d) {
+  const { trip } = d;
+  const c = calc(d, trip.settleMode || 'split');
+  const searching = S.tripSearch;
+  return `
+    ${searching ? `<div class="search-box trip-search"><input type="search" id="tq" value="${esc(S.tripQ)}" placeholder="搜尋這一趟：店名、品項、備註、金額" autocomplete="off" enterkeyhint="search"></div>` : ''}
+    ${searching && S.tripQ.trim() ? '' : peopleSummary(d, c)}
+    ${!searching && c.noAmountN && S.filter !== 'noamount' ? `<button class="banner" data-act="filter" data-filter="noamount">✏️ 有 ${c.noAmountN} 筆還沒填金額，補上後才會算進結算 ›</button>` : ''}
+    ${!searching && c.pendingN && S.filter !== 'pending' ? `<button class="banner" data-act="filter" data-filter="pending">💳 有 ${c.pendingN} 筆刷卡還沒補台幣出帳金額 ›</button>` : ''}
+    <div class="chips">
+      <button class="chip ${S.filter === 'all' ? 'on' : ''}" data-act="filter" data-filter="all">全部</button>
+      <button class="chip ${S.filter === 'pending' ? 'on' : ''}" data-act="filter" data-filter="pending">待補出帳 ${c.pendingN ? `(${c.pendingN})` : ''}</button>
+      ${c.noAmountN || S.filter === 'noamount' ? `<button class="chip ${S.filter === 'noamount' ? 'on' : ''}" data-act="filter" data-filter="noamount">金額待補 ${c.noAmountN ? `(${c.noAmountN})` : ''}</button>` : ''}
+    </div>
+    <div id="trip-rows">${tripRowsHTML(d)}</div>`;
 }
 
 /* ---------- 結算 ---------- */

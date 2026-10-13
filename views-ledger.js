@@ -110,7 +110,7 @@ export function searchResultsHTML() {
         <span class="mid"><div class="t">${esc(title)}</div>
           ${orig ? `<div class="s">${esc(orig)}</div>` : ''}
           <div class="s">${dayLabel(e.date)} · ${flag(x.trip.currency)} ${esc(x.trip.name)}${x.type === 'item' && e.title ? ' · ' + esc(e.title) : ''}${owners}</div></span>
-        <span class="amt">${e.amountPending && x.type !== 'item' ? '<div class="tw"><span class="tag warn">金額待補</span></div>' : `<div class="f">${money(x.amount, x.cur)}</div>${x.cur !== 'TWD' && x.twd != null && !e.amountPending ? `<div class="tw">≈ ${twd(x.twd)}</div>` : ''}`}</span>
+        <span class="amt">${e.amountPending && x.type !== 'item' ? '<div class="tw"><span class="tag warn">金額待補</span></div>' : `<div class="f">${money(x.amount, x.cur)}${x.qty > 1 ? `<small class="muted"> ×${x.qty}</small>` : ''}</div>${x.cur !== 'TWD' && x.twd != null && !e.amountPending ? `<div class="tw">≈ ${twd(x.twd)}</div>` : ''}`}</span>
       </button>`;
     }).join('')}</div>`;
 }
@@ -215,6 +215,8 @@ export function ledgerSettingsTab() {
       </div>
       <label class="switch-row"><span>拍完第一張自動辨識</span>
         <input type="checkbox" data-act="toggle-autoocr" ${ls.get('tl_autoOcr', true) ? 'checked' : ''}></label>
+      <label class="switch-row" style="margin-top:8px"><span>保存收據照片<small class="muted" style="display:block;font-size:12px">關閉後，照片只用來辨識，存檔時不留下（比較省空間）</small></span>
+        <input type="checkbox" data-act="toggle-keepreceipt" ${ls.get('tl_keepReceipt', true) ? 'checked' : ''}></label>
       <p class="small muted">${S.store.mode === 'firebase'
         ? 'Gemini 需要網路，會同時把品名翻成中文；沒網路時自動改用手機辨識，品名等連上網路再補翻譯。'
         : '目前是本機模式，Gemini 要設定 Firebase 後才能用，現在只會用手機辨識。'}</p>
@@ -246,9 +248,9 @@ export function ledgerSettingsTab() {
     </div>
     <div class="card">
       <h3>版本</h3>
-      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.1')}</span></div>
+      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.2')}</span></div>
       <p class="small muted">App 會在背景自動檢查新版，有新版時畫面下方會出現「點此更新」。</p>
       <button class="btn secondary" data-act="check-update">🔄 檢查更新</button>
     </div>
-    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.1</p>`;
+    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.2</p>`;
 }

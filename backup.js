@@ -66,7 +66,7 @@ export async function importLedger(store, file, { onProgress } = {}) {
 
 /** 匯出 CSV（Excel 可直接開，含中文） */
 export function exportCsv(tripsData, memberName) {
-  const head = ['旅程', '日期', '項目', '分類', '幣別', '金額', '付款方式', '台幣出帳金額', '約合台幣', '付款人', '分攤方式', '分攤對象', '品項原文', '品項中文', '品項金額', '品項歸屬', '備註'];
+  const head = ['旅程', '日期', '項目', '分類', '幣別', '金額', '付款方式', '台幣出帳金額', '約合台幣', '付款人', '分攤方式', '分攤對象', '品項原文', '品項中文', '品項數量', '品項單價', '品項金額', '品項歸屬', '備註'];
   const rows = [head];
   const cats = { food: '餐飲', transport: '交通', stay: '住宿', shopping: '購物', fun: '門票娛樂', other: '其他' };
   for (const d of tripsData) {
@@ -79,10 +79,10 @@ export function exportCsv(tripsData, memberName) {
       ];
       if (r.items?.length) {
         for (const it of r.items) {
-          rows.push([...base, it.name, it.nameZh || '', it.amount, (it.owners || []).map(memberName).join('、') || '大家', r.note || '']);
+          rows.push([...base, it.name, it.nameZh || '', it.qty > 0 ? it.qty : 1, it.price != null ? it.price : it.amount / (it.qty > 0 ? it.qty : 1), it.amount, (it.owners || []).map(memberName).join('、') || '大家', r.note || '']);
         }
       } else {
-        rows.push([...base, '', '', '', '', r.note || '']);
+        rows.push([...base, '', '', '', '', '', '', r.note || '']);
       }
     }
   }

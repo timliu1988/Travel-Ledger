@@ -32,9 +32,12 @@ export function searchAll(tripsData, q) {
         if (match(it.name, it.nameZh, ...ctx) && (match(it.name, it.nameZh) || !match(...ctx))) {
           // 品項金額換算台幣：照這筆支出的換算比例
           const ratio = r.val.twd != null && r.amount ? r.val.twd / r.amount : null;
+          // 比價用單價：買 2 個不會被當成比較貴
+          const qty = it.qty > 0 ? it.qty : 1;
+          const unit = it.price != null ? it.price : it.amount / qty;
           results.push({
-            type: 'item', trip: d.trip, expense: r, item: it,
-            amount: it.amount, cur: r.currency, twd: ratio != null ? it.amount * ratio : null,
+            type: 'item', trip: d.trip, expense: r, item: it, qty,
+            amount: unit, cur: r.currency, twd: ratio != null ? unit * ratio : null,
           });
           itemHit = true;
         }

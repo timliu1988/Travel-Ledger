@@ -11,6 +11,14 @@ import {
   openSheet, closeSheet, closeAllSheets, radio, check, avLabel, openViewer,
 } from './ui.js';
 
+/** 品項：數量 × 單價 = 小計（amount）。舊資料沒有數量就當 1 個、單價 = 小計 */
+const round2 = (n) => Math.round(n * 100) / 100;
+export function normItem(it) {
+  const qty = it.qty > 0 ? it.qty : 1;
+  const price = it.price != null ? it.price : (it.amount != null ? round2(it.amount / qty) : null);
+  return { ...it, qty, price, amount: it.amount != null ? it.amount : (price != null ? round2(price * qty) : null) };
+}
+
 /** 品名是外文（日韓泰英等）才需要翻譯 */
 export const needsTranslate = (it) => /[\u3040-\u30ff\uff66-\uff9f\uac00-\ud7af\u0e00-\u0e7fA-Za-z]/.test(it?.name || '');
 
@@ -262,7 +270,7 @@ export function parseItemList(text, members, defaultOwner) {
     const name = m[1].replace(/[\s:：,，、=\-x×*@]+$/, '').trim();
     const amount = parseFloat(m[2].replace(/,/g, ''));
     if (!name || !isFinite(amount) || amount === 0) continue;
-    out.push({ name: name.slice(0, 60), nameZh: '', amount, owners: owner ? [owner] : [] });
+    out.push({ name: name.slice(0, 60), nameZh: '', qty: 1, price: amount, amount, owners: owner ? [owner] : [] });
   }
   return out;
 }
@@ -310,11 +318,11 @@ export function openExpenseForm(id) {
     method: ls.get('tl_lastMethod', 'cash'), paidBy: ids.includes(getMe()) ? getMe() : ids[0],
     participants: ids, splitMode: 'equal', items: [], billedTwd: null, title: '', note: '',
   };
-  let items = structuredClone(v.items || []);
+  let items = structuredClone(v.items || []).map(normItem);
   let receipts = []; // [{ url, img }]，長收據可以有好幾段
   let receiptsChanged = false;
   const oldCount = e ? (e.receiptCount ?? (e.hasReceipt ? 1 : 0)) : 0;
-  let categoryTouched = !!e;
+  let categoryTouched = !!(e && e.category); // 舊帳目沒選過分類的，辨識時也可以自動帶入
   const curOpts = [...new Set([trip.currency, 'TWD', v.currency])];
   const autoOcr = ls.get('tl_autoOcr', true);
 
@@ -388,9 +396,11 @@ export function openExpenseForm(id) {
         <div class="it-row ${(it.owners || []).length ? '' : 'unassigned'}">
           <div class="it-top">
             <input class="it-name" data-i="${i}" value="${esc(it.name || '')}" placeholder="品項" enterkeyhint="next">
-            <input class="it-amt" data-i="${i}" inputmode="decimal" value="${it.amount ?? ''}" placeholder="金額" enterkeyhint="next">
+            <input class="it-qty" data-i="${i}" inputmode="decimal" value="${it.qty && it.qty !== 1 ? it.qty : ''}" placeholder="1" aria-label="數量">
+            <input class="it-amt" data-i="${i}" inputmode="decimal" value="${it.price ?? ''}" placeholder="單價" enterkeyhint="next" aria-label="單價">
             <button type="button" class="it-del" data-del="${i}" aria-label="刪除品項">✕</button>
           </div>
+          <div class="it-line small muted" data-line="${i}">${it.qty > 1 && it.price != null ? `${fmtQty(it.qty)} × ${money(it.price, cur())} ＝ ${money(it.amount, cur())}` : ''}</div>
           <div class="it-zh-row"><span class="it-zh-ic">中</span><input class="it-zh" data-i="${i}" value="${esc(it.nameZh || '')}"
             placeholder="${needsTranslate(it) ? '連上網路後會自動翻譯' : '中文名稱（選填）'}"></div>
           <div class="it-owners">${ownerBtns(it, i)}</div>
@@ -404,7 +414,15 @@ export function openExpenseForm(id) {
         : '';
     };
     const payer = () => form.paidBy.value;
-    const newItem = (name = '', amount = null, owners) => ({ name, nameZh: '', amount, owners: owners || (payer() ? [payer()] : []) });
+    const newItem = (name = '', amount = null, owners) => ({ name, nameZh: '', qty: 1, price: amount, amount, owners: owners || (payer() ? [payer()] : []) });
+    const fmtQty = (q) => (Number.isInteger(q) ? String(q) : String(round2(q)));
+    const recalc = (i) => {
+      const it = items[i];
+      it.amount = it.price != null ? round2(it.price * (it.qty || 1)) : null;
+      const line = $(`[data-line="${i}"]`, root);
+      if (line) line.textContent = it.qty > 1 && it.price != null ? `${fmtQty(it.qty)} × ${money(it.price, cur())} ＝ ${money(it.amount, cur())}` : '';
+      drawSum();
+    };
     const addRow = () => {
       items.push(newItem());
       drawItems();
@@ -438,7 +456,8 @@ export function openExpenseForm(id) {
       if (i == null) return;
       if (ev.target.classList.contains('it-name')) items[i].name = ev.target.value;
       if (ev.target.classList.contains('it-zh')) { items[i].nameZh = ev.target.value; items[i].zhSource = 'user'; }
-      if (ev.target.classList.contains('it-amt')) { items[i].amount = num(ev.target.value); drawSum(); }
+      if (ev.target.classList.contains('it-amt')) { items[i].price = num(ev.target.value); recalc(i); }
+      if (ev.target.classList.contains('it-qty')) { const q = num(ev.target.value); items[i].qty = q > 0 ? q : 1; recalc(i); }
     });
     root.addEventListener('click', (ev) => {
       const own = ev.target.closest('[data-own]');
@@ -468,7 +487,7 @@ export function openExpenseForm(id) {
         addRow();
       } else if (act === 'paste-items') {
         openPasteItems(trip.members, payer(), (list) => {
-          items = items.filter((it) => it.name || it.amount).concat(list);
+          items = items.filter((it) => it.name || it.amount).concat(list.map(normItem));
           drawItems();
           sync();
         });
@@ -505,6 +524,10 @@ export function openExpenseForm(id) {
         </div>`).join('');
       $('.cam-label', root).textContent = n ? '📷 拍下一段' : '📷 拍收據';
       $('.receipt-hint', root).hidden = n === 0;
+      const noKeep = !ls.get('tl_keepReceipt', true) && receipts.some((x) => !x.old);
+      $('.receipt-hint', root).textContent = noKeep
+        ? '照片只用來辨識，儲存這筆時不會保存照片（可在「帳本 → 收據辨識」更改）。'
+        : '長收據可以分段拍：每段和上一段重疊一兩行，拍完再一起辨識。';
       const btn = $('.run-ocr-btn', root);
       btn.hidden = n === 0;
       btn.textContent = `🔍 ${n > 1 ? `辨識全部 ${n} 段` : '辨識金額與品項'}（${engineName()}）`;
@@ -535,7 +558,7 @@ export function openExpenseForm(id) {
       Promise.all([...Array(oldCount)].map((_, i) => S.store.getReceipt(S.tripId, receiptKey(e.id, i))))
         .then((urls) => {
           st.hidden = true;
-          receipts = urls.filter(Boolean).map((url) => ({ url, img: null }));
+          receipts = urls.filter(Boolean).map((url) => ({ url, img: null, old: true }));
           drawReceipt();
         })
         .catch(() => { st.textContent = '照片讀取失敗（可能需要網路），已存的照片不會被刪除'; });
@@ -605,18 +628,31 @@ export function openExpenseForm(id) {
       const goodItems = r.items.filter((it) => it.amount);
       const hadItems = items.some((it) => it.name || it.amount);
       if (r.total && amountWasEmpty) form.amount.value = r.total;
-      if (r.date && (days.length ? days.includes(r.date) : true) && !e) { form.date.value = r.date; drawDays(); }
+      // 日期：新增時一律用收據日期；編輯時只有原本沒日期才補上，有日期但不同就給按鈕
+      const outOfTrip = !!(r.date && days.length && !days.includes(r.date));
+      let dateFilled = false, dateBtn = false;
+      if (r.date) {
+        if (!e || !form.date.value) { form.date.value = r.date; drawDays(); dateFilled = true; }
+        else if (form.date.value !== r.date) dateBtn = true;
+      }
       if (!categoryTouched && r.category) $(`input[name=category][value="${r.category}"]`, form).checked = true;
-      if (!form.title.value.trim() && (r.storeZh || r.store)) form.title.value = r.storeZh || r.store;
+      // 店名：項目空白就填入；已經有名稱又不一樣，就給「用這個店名」按鈕
+      const storeName = (r.storeZh || r.store || '').trim();
+      let storeBtn = false;
+      if (storeName) {
+        if (!form.title.value.trim()) form.title.value = storeName;
+        else if (form.title.value.trim() !== storeName) storeBtn = true;
+      }
       sync();
       const preview = goodItems.slice(0, 6).map((it) => `
-        <div class="ocr-item"><span class="oi-name">${esc(it.nameZh || it.name)}${it.nameZh && it.nameZh !== it.name ? `<small>${esc(it.name)}</small>` : ''}</span><span class="num">${money(it.amount, c)}</span></div>`).join('');
+        <div class="ocr-item"><span class="oi-name">${esc(it.nameZh || it.name)}${it.qty > 1 ? ` ×${esc(String(it.qty))}` : ''}${it.nameZh && it.nameZh !== it.name ? `<small>${esc(it.name)}</small>` : ''}</span><span class="num">${money(it.amount, c)}</span></div>`).join('');
       box.innerHTML = `
         <div class="ocr-head">🔍 辨識結果 <span class="tag ${r.engine === 'gemini' ? '' : 'warn'}">${r.engine === 'gemini' ? `Gemini${r.model ? ' ' + esc(modelLabel(r.model)) : ''}` : '手機辨識'}</span>
           <span class="muted small">請核對金額</span></div>
-        ${r.storeZh || r.store ? `<div class="kv"><span class="k">店家</span><span class="v">${esc(r.storeZh || r.store)}${r.storeZh && r.store && r.storeZh !== r.store ? `<small class="muted">（${esc(r.store)}）</small>` : ''}</span></div>` : ''}
+        ${storeName ? `<div class="kv"><span class="k">店家</span><span class="v">${esc(storeName)}${r.storeZh && r.store && r.storeZh !== r.store ? `<small class="muted">（${esc(r.store)}）</small>` : ''}${storeBtn ? ' <button type="button" class="btn small secondary" data-ocr-store>用這個店名</button>' : ''}</span></div>` : ''}
         <div class="kv"><span class="k">總額</span><span class="v">${r.total ? `<b>${money(r.total, c)}</b> <button type="button" class="btn small secondary" data-ocr-total>填入</button>` : '沒找到'}</span></div>
-        ${r.date ? `<div class="kv"><span class="k">日期</span><span class="v">${dayLabel(r.date)}</span></div>` : ''}
+        ${r.date ? `<div class="kv"><span class="k">日期</span><span class="v">${outOfTrip ? esc(r.date.replace(/-/g, '/')) : dayLabel(r.date)}${dateFilled ? ' <span class="tag">已填入</span>' : ''}${dateBtn ? ' <button type="button" class="btn small secondary" data-ocr-date>用這個日期</button>' : ''}</span></div>
+          ${outOfTrip ? '<div class="small" style="color:var(--warn);margin:-2px 0 4px">⚠️ 收據日期不在旅程期間內，請確認是否正確</div>' : ''}` : ''}
         ${goodItems.length ? `<div class="ocr-items">${preview}${goodItems.length > 6 ? `<div class="muted small">…共 ${goodItems.length} 項</div>` : ''}</div>
           <div class="ocr-btns">
             ${hadItems ? `<button type="button" class="btn small secondary" data-ocr-items>用辨識結果取代品項</button>` : '<span class="small muted">品項已帶入下方明細 ✓</span>'}
@@ -625,8 +661,10 @@ export function openExpenseForm(id) {
         ${r.engine === 'local' && goodItems.some(needsTranslate) ? '<div class="small muted" style="margin-top:6px">品名會在連上網路後自動翻譯成中文。</div>' : ''}
         <details><summary class="small muted">看辨識出的原始內容</summary><pre class="ocr-text">${esc(r.text)}</pre></details>`;
       box.querySelector('[data-ocr-total]')?.addEventListener('click', () => { form.amount.value = r.total; sync(); });
+      box.querySelector('[data-ocr-store]')?.addEventListener('click', (ev) => { form.title.value = storeName; ev.target.remove(); toast('已換成收據上的店名'); });
+      box.querySelector('[data-ocr-date]')?.addEventListener('click', (ev) => { form.date.value = r.date; drawDays(); ev.target.remove(); toast('已換成收據上的日期'); });
       const takeItems = () => {
-        items = goodItems.map((it) => ({ name: it.name, nameZh: it.nameZh || '', zhSource: it.zhSource || '', amount: it.amount, owners: payer() ? [payer()] : [] }));
+        items = goodItems.map((it) => normItem({ name: it.name, nameZh: it.nameZh || '', zhSource: it.zhSource || '', qty: it.qty > 0 ? it.qty : 1, amount: it.amount, owners: payer() ? [payer()] : [] }));
         drawItems();
         sync();
       };
@@ -693,10 +731,12 @@ export function openExpenseForm(id) {
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const splitMode = form.splitMode.value;
+      // 設定「不保存收據照片」時，這次新拍的照片只用來辨識，不存進帳目（原本存著的照片不受影響）
+      if (!ls.get('tl_keepReceipt', true) && receipts.some((x) => !x.old)) receipts = receipts.filter((x) => x.old);
       const cleanItems = items
         .map((it) => ({
           name: (it.name || '').trim(), nameZh: (it.nameZh || '').trim(), zhSource: it.zhSource || '',
-          amount: num(it.amount), owners: (it.owners || []).filter((o) => ids.includes(o)),
+          qty: it.qty > 0 ? it.qty : 1, price: num(it.price), amount: num(it.amount), owners: (it.owners || []).filter((o) => ids.includes(o)),
         }))
         .filter((it) => it.amount);
       let amount = num(form.amount.value);
