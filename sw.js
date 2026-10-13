@@ -8,7 +8,7 @@
 //
 // ⚠️ 檔名不要用底線「_」開頭：GitHub Pages 會把這種檔案藏起來，手機就下載不到。
 // ⚠️ 之後改了任何檔案再上傳 GitHub 時，記得把下面的 BUILD 改成新的（例如改日期），手機才會發現有新版。
-const BUILD = 'v5.1-2026.10.13.3';
+const BUILD = 'v5.1-2026.10.13.4';
 const CACHE = 'tl-' + BUILD;
 const LIB_CACHE = 'tl-lib'; // 外部程式庫另外存，App 更新版本時不用重新下載
 const SHELL = [

@@ -44,7 +44,7 @@ async function generate(parts) {
     try {
       const model = m.getGenerativeModel(ai, {
         model: name,
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+        generationConfig: { responseMimeType: 'application/json' }, // Gemini 3 不支援 temperature 等參數，不要加
       });
       const res = await model.generateContent(parts);
       lastModel = name;
