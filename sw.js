@@ -6,21 +6,27 @@
 //      App 畫面上方會出現「有新版本」，按了才換成新版（不會用到一半突然換掉）。
 //   3. 沒網路就跳過檢查，下次打開再問。
 //
+// ⚠️ 檔名不要用底線「_」開頭：GitHub Pages 會把這種檔案藏起來，手機就下載不到。
 // ⚠️ 之後改了任何檔案再上傳 GitHub 時，記得把下面的 BUILD 改成新的（例如改日期），手機才會發現有新版。
-const BUILD = 'v5.1-2026.10.13';
+const BUILD = 'v5.1-2026.10.13.2';
 const CACHE = 'tl-' + BUILD;
 const LIB_CACHE = 'tl-lib'; // 外部程式庫另外存，App 更新版本時不用重新下載
 const SHELL = [
   './', './index.html', './style.css', './app.js', './store.js', './firebase-config.js',
   './calc.js', './media.js', './ocr.js', './calendar.js', './ai.js', './update.js', './move.js', './theme.js', './icons.js',
   './ui.js', './state.js', './forms.js', './views-trip.js', './views-ledger.js', './search.js', './backup.js',
-  ...['_common', 'journal-dark', 'journal', 'midnight-light', 'midnight', 'mist-dark', 'mist', 'outline-dark', 'outline', 'pop-dark-navy', 'pop-dark', 'pop'].map((n) => `./themes/${n}.css`),
+  ...['common', 'journal-dark', 'journal', 'midnight-light', 'midnight', 'mist-dark', 'mist', 'outline-dark', 'outline', 'pop-dark-navy', 'pop-dark', 'pop'].map((n) => `./themes/${n}.css`),
   './manifest.webmanifest', './icons/icon-192.png', './icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
   // cache: 'reload' = 跳過瀏覽器自己的暫存，確保下載到的是 GitHub 上最新的檔案
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
+  // 主程式檔案一定要全部下載成功才算安裝好；外觀主題的樣式檔少了也沒關係（用到時再上網抓）
+  e.waitUntil(caches.open(CACHE).then(async (c) => {
+    const get = (u) => c.add(new Request(u, { cache: 'reload' }));
+    await Promise.all(SHELL.filter((u) => !u.includes('/themes/')).map(get));
+    await Promise.allSettled(SHELL.filter((u) => u.includes('/themes/')).map(get));
+  }));
   // 第一次安裝（手機上還沒有舊版）直接啟用；更新時則等使用者按「更新」
 });
 
