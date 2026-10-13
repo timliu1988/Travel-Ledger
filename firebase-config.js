@@ -8,3 +8,6 @@ export const firebaseConfig = {
   messagingSenderId: "257208239319",
   appId: "1:257208239319:web:1776524979f736cf10dc92"
 };
+
+// App Check：Fraud Defense（舊稱 reCAPTCHA Enterprise）網站金鑰（金鑰 ID，可公開）
+export const appCheckSiteKey = '6LeMHO0tAAAAAEIMs8gD8AJTHM8s3W5Wm9I2ShlD';

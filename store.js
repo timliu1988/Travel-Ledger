@@ -180,7 +180,8 @@ async function createFirebaseStore(cfg, appCheckSiteKey) {
     try {
       if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; // 在自己電腦測試用
       const ac = await import(base + 'firebase-app-check.js');
-      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+      // 傳統版 reCAPTCHA v3 已淘汰，改用 Fraud Defense（舊稱 reCAPTCHA Enterprise）
+      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaEnterpriseProvider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
       appCheck = true;
     } catch (e) { console.warn('App Check 啟用失敗', e); }
   }
