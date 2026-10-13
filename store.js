@@ -12,7 +12,7 @@
 // 帳本代碼 = ledgerId；旅程不再需要各自的代碼，加入帳本就能看到裡面所有旅程。
 // 用 * 匯入：舊版的 firebase-config.js 沒有 appCheckSiteKey 也不會出錯
 import * as CFG from './firebase-config.js';
-import { setFirebaseApp } from './ai.js';
+import { setFirebaseApp, setAppCheck } from './ai.js';
 
 export const FIREBASE_VERSION = '12.19.0';
 
@@ -181,9 +181,10 @@ async function createFirebaseStore(cfg, appCheckSiteKey) {
       if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; // 在自己電腦測試用
       const ac = await import(base + 'firebase-app-check.js');
       // 傳統版 reCAPTCHA v3 已淘汰，改用 Fraud Defense（舊稱 reCAPTCHA Enterprise）
-      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaEnterpriseProvider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+      const inst = ac.initializeAppCheck(app, { provider: new ac.ReCaptchaEnterpriseProvider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+      setAppCheck({ inst, mod: ac });
       appCheck = true;
-    } catch (e) { console.warn('App Check 啟用失敗', e); }
+    } catch (e) { console.warn('App Check 啟用失敗', e); setAppCheck({ error: e }); }
   }
   setFirebaseApp(app);
   // 離線快取：沒網路也能記帳，連上網後自動同步

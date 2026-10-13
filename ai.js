@@ -15,6 +15,8 @@ export const modelLabel = (id) => String(id || '').replace(/^gemini-/, '').split
 
 /** store.js 建立 Firebase 後呼叫，把 app 交給這裡共用 */
 export function setFirebaseApp(app) { firebaseApp = app; }
+let appCheckRef = null; // { inst, mod } 或 { error }
+export function setAppCheck(x) { appCheckRef = x; }
 
 /** 現在能不能用 Gemini（有設定 Firebase、有網路） */
 export function aiReady() {
@@ -84,6 +86,18 @@ export async function aiDiagnose() {
   let mod;
   try { mod = await getAiModule(); } catch (e) { return [{ model: '—', ok: false, msg: '下載 Gemini 程式庫失敗：' + shortErr(e) }]; }
   const out = [];
+  // 先檢查 App Check：AI Logic 已強制執行時，沒拿到驗證就一定會失敗
+  if (!appCheckRef) out.push({ model: 'App Check', ok: false, msg: '這支手機沒有啟用 App Check：GitHub 上的 firebase-config.js 沒有 appCheckSiteKey，或手機還在用舊的設定檔' });
+  else if (appCheckRef.error) out.push({ model: 'App Check', ok: false, msg: '啟用失敗：' + shortErr(appCheckRef.error) });
+  else {
+    const t = Date.now();
+    try {
+      const r = await withTimeout(appCheckRef.mod.getToken(appCheckRef.inst, true), 20000);
+      out.push({ model: 'App Check', ok: !!r?.token, msg: r?.token ? `已取得驗證（${((Date.now() - t) / 1000).toFixed(1)} 秒）` : '沒有拿到驗證' });
+    } catch (e) {
+      out.push({ model: 'App Check', ok: false, msg: '取得驗證失敗：' + shortErr(e) });
+    }
+  }
   for (const name of MODELS) {
     const t = Date.now();
     try {
