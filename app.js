@@ -1,7 +1,7 @@
 // 旅伴記帳 v5.1 — 主程式：畫面切換、按鈕事件、啟動
 import { createStore, uid, receiptKey } from './store.js';
 import { calc } from './calc.js';
-import { aiReady, aiTranslateNames } from './ai.js';
+import { aiReady, aiTranslateNames, aiDiagnose } from './ai.js';
 import { fmtRange } from './calendar.js';
 import {
   S, hooks, render, myLedgers, rememberLedger, forgetLedger, getMe, setMe, member, memberName, ledgerMembers, tripData, allTrips,
@@ -503,6 +503,17 @@ document.addEventListener('click', async (ev) => {
     // 設定
     case 'toggle-autoocr': ls.set('tl_autoOcr', el.checked); break;
     case 'ocr-engine': ls.set('tl_ocrEngine', el.value); break;
+    case 'ai-test': {
+      const box = $('#ai-test-out');
+      if (!box) return;
+      el.disabled = true;
+      box.innerHTML = '<p class="small muted">測試中，每個模型約需幾秒…</p>';
+      const list = await aiDiagnose();
+      el.disabled = false;
+      box.innerHTML = `<div class="ai-test">${list.map((x) => `<div class="ai-row ${x.ok ? 'ok' : 'bad'}"><b>${x.ok ? '✅' : '❌'} ${esc(x.model)}</b><span>${esc(x.msg)}</span></div>`).join('')}</div>
+        <p class="small muted">${list.some((x) => x.ok) ? '有可以用的模型，收據辨識會自動用它。' : '全部失敗。可以把這個畫面截圖給我，看錯誤訊息判斷是哪裡沒設定好。'}</p>`;
+      break;
+    }
     case 'check-update': {
       toast('檢查中…');
       const r = await checkNow();

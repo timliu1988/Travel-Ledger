@@ -557,7 +557,7 @@ export function openExpenseForm(id) {
         const part = m.parts > 1 ? `第 ${m.part}/${m.parts} 段 ` : '';
         st.innerHTML = `<span>${part}${label[m.status] || m.status || '處理中'}${p != null ? ` ${p}%` : ''}…</span><span class="bar"><i style="width:${p ?? 10}%"></i></span>`;
       };
-      let r = null, notice = '';
+      let r = null, notice = '', noticeDetail = '';
       try {
         if (ls.get('tl_ocrEngine', 'auto') === 'auto' && aiReady()) {
           st.innerHTML = `<span>Gemini 辨識與翻譯中${receipts.length > 1 ? `（${receipts.length} 段合併）` : ''}…</span><span class="bar indet"><i></i></span>`;
@@ -567,6 +567,7 @@ export function openExpenseForm(id) {
           } catch (err) {
             console.warn(err);
             notice = err.message + '，改用手機辨識。';
+            noticeDetail = err.detail || '';
           }
         } else if (ls.get('tl_ocrEngine', 'auto') === 'auto' && !navigator.onLine) {
           notice = '目前沒有網路，使用手機辨識；品名會在連上網路後自動翻譯。';
@@ -583,7 +584,7 @@ export function openExpenseForm(id) {
           });
         }
         st.hidden = !notice;
-        st.textContent = notice;
+        st.innerHTML = esc(notice) + (noticeDetail ? `<details class="ocr-err"><summary>看錯誤細節</summary><pre>${esc(noticeDetail)}</pre></details>` : '');
         showOcrResult(r);
       } catch (err) {
         console.error(err);

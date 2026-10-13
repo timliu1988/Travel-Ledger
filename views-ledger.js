@@ -218,6 +218,7 @@ export function ledgerSettingsTab() {
       <p class="small muted">${S.store.mode === 'firebase'
         ? 'Gemini 需要網路，會同時把品名翻成中文；沒網路時自動改用手機辨識，品名等連上網路再補翻譯。'
         : '目前是本機模式，Gemini 要設定 Firebase 後才能用，現在只會用手機辨識。'}</p>
+      ${S.store.mode === 'firebase' ? '<button class="btn secondary" data-act="ai-test">🔍 測試 Gemini 連線</button><div id="ai-test-out"></div>' : ''}
     </div>
     <div class="card">
       <h3>備份</h3>

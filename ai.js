@@ -4,7 +4,7 @@
 import { FIREBASE_VERSION } from './store.js';
 
 // 依序嘗試：第一個的免費額度用完時自動換下一個。Google 推出新模型時改這裡即可。
-const MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const MODELS = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 let firebaseApp = null;
 let aiPromise = null;
 let lastModel = ''; // 最近一次實際用到的模型（顯示在辨識結果上）
@@ -29,11 +29,17 @@ function getAiModule() {
   return aiPromise;
 }
 
+/** 錯誤訊息去掉很長的網址，留下狀態碼和原因，方便看出問題 */
+export const shortErr = (e) => String(e?.message || e)
+  .replace(/https:\/\/\S+?(:generateContent|:countTokens)?(?=[:\s]|$)/g, '')
+  .replace(/^AI:\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 300);
+
 /** 依序嘗試模型：第一個額度用完（429）或暫時不能用時，換下一個 */
 async function generate(parts) {
   if (window.__tlAiMock) return window.__tlAiMock(parts);
   const { m, ai } = await getAiModule();
   let lastErr;
+  const tried = [];
   for (const name of MODELS) {
     try {
       const model = m.getGenerativeModel(ai, {
@@ -45,19 +51,45 @@ async function generate(parts) {
       return res.response.text();
     } catch (e) {
       lastErr = e;
+      tried.push(`${name}：${shortErr(e)}`);
+      console.warn('Gemini', name, e);
       const msg = String(e?.message || e);
       if (!/429|quota|RESOURCE_EXHAUSTED|503|UNAVAILABLE|not found|404/i.test(msg)) break;
     }
   }
-  throw friendly(lastErr);
+  const err = friendly(lastErr);
+  err.detail = tried.join('\n');
+  throw err;
 }
 
 function friendly(e) {
   const msg = String(e?.message || e);
-  if (/429|quota|RESOURCE_EXHAUSTED/i.test(msg)) return new Error('Gemini 免費額度暫時用完，請稍後再試（已可改用手機辨識）');
-  if (/api.*not.*enabled|PERMISSION_DENIED|403/i.test(msg)) return new Error('Firebase 專案還沒啟用 AI Logic（見安裝教學第 1-5 步）');
-  if (/Failed to fetch|network/i.test(msg)) return new Error('網路連線失敗');
-  return new Error('Gemini 辨識失敗：' + msg.slice(0, 120));
+  if (/429|quota|RESOURCE_EXHAUSTED/i.test(msg)) return new Error('Gemini 免費額度暫時用完，請稍後再試');
+  if (/SERVICE_DISABLED|has not been used|is disabled|API_KEY_SERVICE_BLOCKED|blocked/i.test(msg)) return new Error('Firebase 專案的 AI Logic API 沒有啟用，或 API 金鑰被限制');
+  if (/api.*not.*enabled|PERMISSION_DENIED|403/i.test(msg)) return new Error('沒有權限使用 Gemini（AI Logic 沒啟用，或 API 金鑰／App Check 擋住了）');
+  if (/404|not found/i.test(msg)) return new Error('找不到可用的 Gemini 模型');
+  if (/Failed to fetch|network|NetworkError/i.test(msg)) return new Error('網路連線失敗');
+  return new Error('Gemini 辨識失敗：' + shortErr(e).slice(0, 120));
+}
+
+/** 設定頁的「測試 Gemini 連線」：每個模型各送一句很短的話，回報各自的結果 */
+export async function aiDiagnose() {
+  if (!firebaseApp) return [{ model: '—', ok: false, msg: '目前是本機模式，沒有設定 Firebase' }];
+  if (!navigator.onLine) return [{ model: '—', ok: false, msg: '目前沒有網路' }];
+  let mod;
+  try { mod = await getAiModule(); } catch (e) { return [{ model: '—', ok: false, msg: '下載 Gemini 程式庫失敗：' + shortErr(e) }]; }
+  const out = [];
+  for (const name of MODELS) {
+    const t = Date.now();
+    try {
+      const model = mod.m.getGenerativeModel(mod.ai, { model: name });
+      const res = await model.generateContent('只回答兩個字：正常');
+      out.push({ model: name, ok: true, msg: `${res.response.text().trim().slice(0, 20)}（${((Date.now() - t) / 1000).toFixed(1)} 秒）` });
+    } catch (e) {
+      out.push({ model: name, ok: false, msg: shortErr(e) });
+    }
+  }
+  return out;
 }
 
 function parseJson(text) {
