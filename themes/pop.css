@@ -1,4 +1,4 @@
-@import url('_common.css');
+@import url('common.css');
 /* ===== 風格 D：活潑撞色 Pop — 粗黑框、實心陰影、鮮豔色塊 ===== */
 :root {
   --bg: #fff4e0; --card: #ffffff; --text: var(--ink); --muted: #5c5c5c; --line: var(--ink);

@@ -1,4 +1,4 @@
-@import url('_common.css');
+@import url('common.css');
 /* ===== 風格 B：旅行手帳 Journal — 紙張、票根、印章感 ===== */
 :root {
   --bg: #f3ece0; --card: #fffcf5; --text: #2b2a33; --muted: #8b7f6e; --line: #e6dac6;

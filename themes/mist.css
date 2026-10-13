@@ -1,4 +1,4 @@
-@import url('_common.css');
+@import url('common.css');
 /* ===== 風格 A：清透 Mist — 接近 iOS 原生的乾淨風格 ===== */
 :root {
   --bg: #f2f3f7; --card: #ffffff; --text: #111827; --muted: #8a909c; --line: #eceef3;

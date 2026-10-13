@@ -1,4 +1,4 @@
-@import url('_common.css');
+@import url('common.css');
 /* ===== 風格 C：夜旅 Midnight — 深色、霓虹漸層、毛玻璃 ===== */
 :root {
   --bg: #070b18; --card: rgba(255,255,255,.055); --text: #eef2ff; --muted: #8b93b3; --line: rgba(255,255,255,.085);

@@ -1,0 +1,14 @@
+/* 線條圖示的共用尺寸 */
+.ico { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; display: inline-block; }
+nav.tabs button .i { filter: none !important; opacity: 1 !important; display: grid; place-items: center; height: 28px; }
+nav.tabs button .i .ico { width: 25px; height: 25px; }
+.item .ic { font-size: 0; }
+.item .ic > .ico { width: 21px; height: 21px; }
+.item .ic .ic-av { font-size: 16px; }
+.trip-card2 .more .ico { width: 22px; height: 22px; vertical-align: middle; }
+.fab { display: grid; place-items: center; }
+.fab .ico { width: 28px; height: 28px; stroke-width: 2.2; }
+.card h3 .ico { width: 19px; height: 19px; margin-right: 2px; }
+.transfer b { white-space: nowrap; }
+/* 新版本提示、主題選擇在各主題下的配色 */
+.update-bar { background: var(--brand); color: var(--brand-ink); }
