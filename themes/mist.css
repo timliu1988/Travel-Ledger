@@ -1,0 +1,89 @@
+@import url('_common.css');
+/* ===== 風格 A：清透 Mist — 接近 iOS 原生的乾淨風格 ===== */
+:root {
+  --bg: #f2f3f7; --card: #ffffff; --text: #111827; --muted: #8a909c; --line: #eceef3;
+  --brand: #2f6bff; --brand-ink: #fff; --brand-soft: #eaf0ff;
+  --warn: #b45309; --warn-soft: #fff4e0; --pos: #0f9d6b; --neg: #e8475f; --danger: #e8475f;
+  --shadow: 0 1px 2px rgba(16,24,40,.03), 0 8px 24px rgba(16,24,40,.06); --radius: 20px;
+}
+body { letter-spacing: .1px; }
+header.top { border-bottom: 0; background: color-mix(in srgb, var(--bg) 80%, transparent); padding-top: 14px; padding-bottom: 12px; }
+header.top h1 { font-size: 23px; font-weight: 800; letter-spacing: -.3px; }
+header.top .sub { font-size: 13px; }
+.card, .list, .person, .tile { border: 0; }
+.card { padding: 16px 18px; }
+.card h3 { font-size: 16px; font-weight: 800; }
+.year-head { font-size: 13px; letter-spacing: .5px; color: var(--muted); margin: 20px 6px 8px; }
+.day { font-weight: 700; color: #6b7280; margin-top: 18px; }
+
+/* 旅程卡 */
+.trip-card2 { border-radius: 22px; margin-bottom: 14px; }
+.trip-open2 { padding: 16px 4px 16px 16px; gap: 14px; }
+.trip-flag { width: 56px; height: 56px; border-radius: 16px; background: var(--bg); display: grid; place-items: center; font-size: 32px; flex: none; }
+.trip-open2 .t { font-size: 18px; font-weight: 800; }
+.trip-sum { font-weight: 700; color: var(--text); }
+.trip-card2 .more { color: #b7bcc6; }
+
+/* 每人摘要：自己那張用藍色漸層 */
+.person { border-radius: 22px; padding: 14px; }
+.person.me { background: linear-gradient(140deg, #2f6bff 0%, #5b8cff 60%, #7aa2ff 100%); color: #fff; box-shadow: 0 10px 26px rgba(47,107,255,.32); }
+.person.me .p-sub, .person.me .p-name { color: rgba(255,255,255,.88); }
+.person.me .pos, .person.me .neg { color: #fff; background: rgba(255,255,255,.2); padding: 2px 8px; border-radius: 8px; display: inline-block; }
+.person.me .av { box-shadow: 0 0 0 2px rgba(255,255,255,.7); }
+.p-total { font-size: 22px; letter-spacing: -.3px; }
+.trip-total b { font-size: 15px; }
+
+/* 帳目列表 */
+.list { border-radius: 20px; }
+.item { padding: 13px 16px; border-bottom-color: #f1f2f6; }
+.item .ic { width: 42px; height: 42px; border-radius: 50%; background: #f1f2f4; color: #6b7280; }
+.item .ic[data-cat=food] { background: #fff1e6; color: #f97316; }
+.item .ic[data-cat=transport] { background: #e8f0ff; color: #2f6bff; }
+.item .ic[data-cat=stay] { background: #f1eaff; color: #8b5cf6; }
+.item .ic[data-cat=shopping] { background: #ffe8f1; color: #ec4899; }
+.item .ic[data-cat=fun] { background: #e4f8ee; color: #10b981; }
+.item .t { font-weight: 700; }
+.item .f { font-weight: 800; }
+.item .s .ico { color: #a0a6b1; }
+.tag { border-radius: 999px; padding: 1px 8px; }
+
+/* chips / 選項 */
+.chip { border: 0; background: var(--card); box-shadow: var(--shadow); font-weight: 600; padding: 7px 16px; }
+.chip.on { box-shadow: 0 6px 16px rgba(47,107,255,.3); }
+.opt > span { border: 0; background: #f2f3f7; font-weight: 600; }
+.seg { background: #eceef3; border: 0; border-radius: 13px; }
+.seg .opt > span { background: transparent; font-weight: 600; color: #6b7280; }
+.seg .opt input:checked + span { color: var(--text); box-shadow: 0 2px 8px rgba(16,24,40,.1); border-radius: 10px; }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { border: 0; background: #f2f3f7; border-radius: 14px; }
+.amount-input input { background: var(--brand-soft); font-size: 30px; }
+
+/* 按鈕 */
+.btn { border-radius: 16px; padding: 14px 16px; }
+.btn.secondary { background: var(--brand-soft); }
+.btn.danger { border: 0; background: #fff0f2; }
+.fab { width: 60px; height: 60px; box-shadow: 0 10px 24px rgba(47,107,255,.42); }
+
+/* 底部分頁：懸浮的毛玻璃條 */
+nav.tabs { left: 14px; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 10px); border: 0; border-radius: 26px;
+  background: rgba(255,255,255,.78); box-shadow: 0 10px 30px rgba(16,24,40,.12); padding: 8px 6px; }
+nav.tabs button { font-size: 10.5px; color: #9aa0ab; }
+nav.tabs button.on { color: var(--brand); }
+main { padding-bottom: calc(env(safe-area-inset-bottom) + 120px); }
+.fab { bottom: calc(env(safe-area-inset-bottom) + 92px); }
+
+/* 彈出視窗 */
+.sheet { border-radius: 28px 28px 0 0; }
+.sheet-head { border-bottom: 0; padding: 18px 14px 6px 20px; }
+.sheet-head h2 { font-size: 20px; font-weight: 800; }
+.sheet-backdrop { background: rgba(17,24,39,.32); backdrop-filter: blur(3px); }
+
+/* 統計 */
+.tile { border-radius: 20px; padding: 14px 16px; }
+.tile .v { font-size: 22px; letter-spacing: -.4px; }
+.stat-tiles .tile:first-child { background: #111827; color: #fff; }
+.stat-tiles .tile:first-child .k { color: #9ca3af; }
+.bar-track { height: 12px; background: #f1f2f6; border-radius: 6px; }
+.bar-track i { background: linear-gradient(90deg, #2f6bff, #7aa2ff); border-radius: 6px; }
+.transfer b { font-size: 19px; }
+.cash-card { border: 0; background: #f7f8fb; border-radius: 16px; }
+.search-box input { border: 0; border-radius: 16px; }

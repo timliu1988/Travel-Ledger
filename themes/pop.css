@@ -1,0 +1,109 @@
+@import url('_common.css');
+/* ===== 風格 D：活潑撞色 Pop — 粗黑框、實心陰影、鮮豔色塊 ===== */
+:root {
+  --bg: #fff4e0; --card: #ffffff; --text: var(--ink); --muted: #5c5c5c; --line: var(--ink);
+  --brand: var(--ink); --brand-ink: #ffffff; --brand-soft: #ffe9a8;
+  --yellow: #ffd23f; --pink: #ff7aa2; --blue: #5da9ff; --green: #3ddc97; --orange: #ff8a3d; --purple: #b18cff;
+  --warn: var(--ink); --warn-soft: #ffd23f; --pos: #0b8a55; --neg: #e2335d; --danger: #e2335d;
+  --shadow: 4px 4px 0 var(--ink); --radius: 18px; --ink: #151515; --on: #151515;
+}
+body { font-weight: 500; }
+header.top { background: var(--yellow); border-bottom: 2.5px solid var(--ink); backdrop-filter: none; }
+header.top h1 { font-weight: 900; font-size: 21px; }
+header.top .sub { color: #3a3a3a; font-weight: 600; }
+header.top .icon-btn { color: var(--ink); font-size: 22px; }
+.card, .list, .person, .tile { border: 2.5px solid var(--ink); box-shadow: var(--shadow); }
+.card h3 { font-weight: 900; font-size: 17px; }
+.year-head { display: inline-block; background: var(--ink); color: var(--card); padding: 2px 12px; border-radius: 999px; font-weight: 900; margin: 18px 2px 12px; }
+.day { color: var(--ink); font-weight: 800; }
+
+/* 旅程卡：每張不同顏色 */
+.trip-card2 { border-radius: 20px; margin-bottom: 16px; }
+main > .trip-card2:nth-child(4n+2) { background: var(--pink); }
+main > .trip-card2:nth-child(4n+3) { background: var(--blue); }
+main > .trip-card2:nth-child(4n) { background: var(--green); }
+main > .trip-card2:nth-child(4n+1) { background: var(--orange); }
+.trip-card2 .muted, .trip-card2 .trip-sum .muted { color: #2a2a2a; }
+.trip-flag { width: 56px; height: 56px; border-radius: 50%; background: #fff; border: 2.5px solid var(--ink); display: grid; place-items: center; font-size: 30px; flex: none; }
+.trip-open2 { gap: 14px; }
+.trip-open2 .t { font-weight: 900; font-size: 19px; }
+.trip-sum { font-weight: 800; }
+.trip-card2 .more { color: var(--ink); }
+.tag { background: #fff; color: var(--ink); border: 2px solid var(--ink); border-radius: 999px; font-weight: 800; }
+.tag.warn { background: var(--yellow); color: var(--ink); }
+
+/* 每人摘要 */
+.person { border-radius: 20px; }
+.person.me { background: var(--pink); border-color: var(--ink); }
+.person + .person { background: var(--blue); }
+.person .muted, .person .p-sub { color: #222; }
+.person .pos, .person .neg { color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 1px 8px; display: inline-block; }
+.p-total { font-weight: 900; }
+.trip-total { font-weight: 800; }
+
+/* 帳目列表 */
+.list { border-radius: 20px; }
+.item { border-bottom: 2px solid var(--ink); }
+.item .ic { border-radius: 12px; border: 2px solid var(--ink); background: #eee; color: var(--ink); }
+.item .ic[data-cat=food] { background: var(--orange); }
+.item .ic[data-cat=transport] { background: var(--blue); }
+.item .ic[data-cat=stay] { background: var(--purple); }
+.item .ic[data-cat=shopping] { background: var(--pink); }
+.item .ic[data-cat=fun] { background: var(--green); }
+.item .ic[data-cat=tag] { background: var(--yellow); }
+.item .ic > .ico { stroke-width: 2.2; }
+.item .t, .item .f { font-weight: 900; }
+.av { box-shadow: 0 0 0 2px var(--ink); }
+
+/* chips / 選項 */
+.chip { border: 2px solid var(--ink); font-weight: 800; box-shadow: 2px 2px 0 var(--ink); }
+.chip.on { background: var(--ink); color: var(--card); }
+.opt > span { border: 2px solid var(--ink); font-weight: 700; }
+.opt input:checked + span { background: var(--yellow); color: var(--ink); border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font-weight: 900; }
+.opt input:checked + span .av { box-shadow: 0 0 0 2px var(--ink); }
+.seg { background: #fff; border: 2.5px solid var(--ink); border-radius: 14px; }
+.seg .opt > span { border: 0; font-weight: 700; }
+.seg .opt input:checked + span { background: var(--ink); color: var(--card); box-shadow: none; }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { background: #fff; border: 2.5px solid var(--ink); border-radius: 14px; font-weight: 600; }
+input:focus, textarea:focus, select:focus { outline: 0; box-shadow: 3px 3px 0 var(--ink); }
+.amount-input input { background: var(--yellow); font-size: 32px; font-weight: 900; }
+
+/* 按鈕 */
+.btn { background: var(--yellow); color: var(--ink); border: 2.5px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); border-radius: 16px; font-weight: 900; }
+.btn.secondary { background: #fff; color: var(--ink); }
+.btn.danger { background: #fff; color: var(--danger); border-color: var(--ink); }
+.btn:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 var(--ink); }
+.btn.small { box-shadow: 2px 2px 0 var(--ink); border-width: 2px; }
+.fab { background: var(--pink); color: var(--ink); border: 2.5px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+
+/* 底部分頁 */
+nav.tabs { background: #fff; border-top: 2.5px solid var(--ink); backdrop-filter: none; }
+nav.tabs button { color: var(--ink); font-weight: 700; }
+nav.tabs button .i { width: 54px; border-radius: 999px; }
+nav.tabs button.on .i { background: var(--yellow); border: 2px solid var(--ink); }
+nav.tabs button.on { font-weight: 900; color: var(--ink); }
+
+/* 彈出視窗 */
+.sheet { border: 2.5px solid var(--ink); border-bottom: 0; border-radius: 26px 26px 0 0; }
+.sheet-head { border-bottom: 2.5px solid var(--ink); background: var(--yellow); border-radius: 24px 24px 0 0; }
+.sheet-head h2 { font-weight: 900; }
+.sheet-head .icon-btn { color: var(--ink); }
+
+/* 統計 */
+.tile { border-radius: 18px; }
+.stat-tiles .tile:nth-child(1) { background: var(--yellow); }
+.stat-tiles .tile:nth-child(2) { background: var(--green); }
+.stat-tiles .tile:nth-child(3) { background: var(--blue); }
+.stat-tiles .tile:nth-child(4) { background: var(--pink); }
+.tile .k { color: #222; font-weight: 700; }
+.tile .v { font-weight: 900; font-size: 22px; }
+.bar-track { height: 16px; background: #fff; border: 2px solid var(--ink); border-radius: 999px; }
+.bar-track i { background: var(--pink); border-right: 2px solid var(--ink); border-radius: 0; }
+.transfer { border-bottom: 2px dashed var(--ink); }
+.transfer b { background: var(--yellow); border: 2px solid var(--ink); border-radius: 10px; padding: 2px 10px; }
+.cash-card { border: 2px solid var(--ink); border-radius: 16px; }
+.banner { border: 2.5px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); font-weight: 700; }
+.search-box input { border: 2.5px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+.ocr-result, .items-sum { border: 2px solid var(--ink); }
+.it-row { border: 2px solid var(--ink); }
+.transfer b { white-space: nowrap; }

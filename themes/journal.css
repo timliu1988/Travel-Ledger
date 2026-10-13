@@ -1,0 +1,98 @@
+@import url('_common.css');
+/* ===== 風格 B：旅行手帳 Journal — 紙張、票根、印章感 ===== */
+:root {
+  --bg: #f3ece0; --card: #fffcf5; --text: #2b2a33; --muted: #8b7f6e; --line: #e6dac6;
+  --brand: #c4552d; --brand-ink: #fffaf2; --brand-soft: #f7e3d6; --ink: #24324a;
+  --warn: #a0521f; --warn-soft: #f9e8d2; --pos: #2f7d5b; --neg: #c4552d; --danger: #b23a2a;
+  --shadow: 0 1px 0 #eadfcb, 0 6px 16px rgba(92,64,24,.07); --radius: 10px;
+  --serif: "Noto Serif CJK TC", "Songti TC", "PMingLiU", serif;
+}
+html, body { background-color: var(--bg); }
+body { background-image: radial-gradient(#dccfb7 1px, transparent 1.3px); background-size: 20px 20px; }
+h1, h2, h3, .trip-open2 .t, .p-total, .tile .v, .item .t, .transfer b, .ts-head b, .year-head, .sheet-head h2 { font-family: var(--serif); }
+header.top { background: rgba(243,236,224,.92); border-bottom: 3px double #d6c7ac; }
+header.top h1 { font-size: 21px; font-weight: 900; color: var(--ink); }
+.card, .list, .person, .tile { border: 1px solid var(--line); }
+.card h3 { font-size: 16px; color: var(--ink); font-weight: 900; }
+.year-head { font-size: 22px; color: var(--ink); font-weight: 900; margin: 18px 4px 10px; letter-spacing: 1px; }
+.year-head::after { content: ""; display: block; height: 2px; width: 40px; background: var(--brand); margin-top: 4px; }
+.day { font-family: var(--serif); color: var(--ink); font-weight: 700; border-bottom: 1px dashed #d6c7ac; padding-bottom: 4px; }
+
+/* 旅程卡做成票根 */
+.trip-card2 { position: relative; border-radius: 10px; overflow: visible; margin-bottom: 16px;
+  background: linear-gradient(90deg, #f6ead7 0 84px, var(--card) 84px); }
+.trip-card2::before, .trip-card2::after { content: ""; position: absolute; left: 75px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); }
+.trip-card2::before { top: -10px; clip-path: inset(50% 0 0 0); }
+.trip-card2::after { bottom: -10px; clip-path: inset(0 0 50% 0); }
+.trip-open2 { padding: 18px 4px 18px 0; gap: 0; background-image: linear-gradient(#d6c7ac 50%, transparent 50%); background-size: 1.5px 8px; background-repeat: repeat-y; background-position: 84px 0; }
+.trip-flag { width: 84px; text-align: center; font-size: 34px; flex: none; }
+.trip-open2 .mid { padding-left: 16px; }
+.trip-open2 .t { font-size: 19px; font-weight: 900; color: var(--ink); }
+.trip-sum { color: var(--text); font-weight: 600; }
+
+/* 印章標籤 */
+.tag { background: transparent; border: 1.5px solid currentColor; border-radius: 4px; font-family: var(--serif); transform: rotate(-3deg); padding: 0 5px; }
+.tag.warn { background: transparent; }
+
+/* 每人摘要：紙膠帶 */
+.person { position: relative; border-radius: 6px; padding: 16px 12px 12px; }
+.person::before { content: ""; position: absolute; top: -9px; left: 50%; width: 64px; height: 18px; transform: translateX(-50%) rotate(-4deg);
+  background: rgba(196,85,45,.28); }
+.person + .person::before { background: rgba(62,106,138,.28); transform: translateX(-50%) rotate(3deg); }
+.person.me { border-color: var(--line); background: #fff8ec; }
+.p-total { color: var(--ink); font-weight: 900; }
+.people { margin-top: 8px; }
+
+/* 帳目列表 */
+.list { border-radius: 8px; }
+.item { border-bottom: 1px dashed #e3d6c0; }
+.item .ic { border-radius: 50%; background: transparent; border: 1.5px solid currentColor; color: var(--muted); width: 40px; height: 40px; }
+.item .ic[data-cat=food] { color: #c4552d; }
+.item .ic[data-cat=transport] { color: #3e6a8a; }
+.item .ic[data-cat=stay] { color: #7a5c99; }
+.item .ic[data-cat=shopping] { color: #b4537a; }
+.item .ic[data-cat=fun] { color: #4c8a5a; }
+.item .ic > .ico { stroke-width: 1.6; }
+.item .t { color: var(--ink); font-weight: 700; }
+.item .f { font-family: var(--serif); font-weight: 900; color: var(--ink); }
+
+/* chips / 選項 */
+.chip { border-radius: 4px; border: 1px solid #d6c7ac; background: var(--card); font-family: var(--serif); }
+.chip.on { background: var(--ink); border-color: var(--ink); color: #fffaf2; }
+.opt > span { border-radius: 4px; border-color: #d6c7ac; }
+.opt input:checked + span { background: var(--ink); border-color: var(--ink); color: #fffaf2; }
+.seg { background: transparent; border: 1px solid #d6c7ac; border-radius: 6px; }
+.seg .opt input:checked + span { background: var(--ink); color: #fffaf2; border-radius: 4px; box-shadow: none; }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { background: #fbf6ec; border-color: #e0d3bd; border-radius: 6px; }
+.amount-input input { font-family: var(--serif); font-size: 30px; border-width: 0 0 2px; border-radius: 0; border-color: var(--ink); background: transparent; }
+
+/* 按鈕 */
+.btn { border-radius: 6px; font-family: var(--serif); letter-spacing: 1px; }
+.btn.secondary { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+.btn.danger { border-style: dashed; }
+.fab { background: var(--brand); border-radius: 50%; box-shadow: 0 0 0 4px var(--bg), 0 0 0 5.5px var(--brand), 0 8px 18px rgba(196,85,45,.35); }
+
+/* 底部分頁 */
+nav.tabs { background: rgba(255,252,245,.96); border-top: 3px double #d6c7ac; }
+nav.tabs button { color: #a89b86; font-family: var(--serif); }
+nav.tabs button.on { color: var(--brand); }
+nav.tabs button .i .ico { stroke-width: 1.6; }
+
+/* 彈出視窗 */
+.sheet { border-radius: 14px 14px 0 0; background: var(--card); background-image: repeating-linear-gradient(transparent 0 31px, #efe5d4 31px 32px); }
+.sheet-head { border-bottom: 3px double #d6c7ac; }
+.sheet-head h2 { color: var(--ink); font-weight: 900; }
+
+/* 統計 */
+.tile { border-radius: 6px; }
+.tile .v { color: var(--ink); font-weight: 900; }
+.stat-tiles .tile:first-child { background: var(--ink); border-color: var(--ink); }
+.stat-tiles .tile:first-child .k, .stat-tiles .tile:first-child .v { color: #fffaf2; }
+.bar-track { background: transparent; border: 1px solid #d6c7ac; height: 12px; border-radius: 2px; }
+.bar-track i { background: repeating-linear-gradient(45deg, var(--brand) 0 6px, #d4704a 6px 12px); border-radius: 0; }
+.transfer { border-bottom: 1px dashed #d6c7ac; }
+.transfer b { color: var(--brand); font-size: 20px; }
+.cash-card { border-style: dashed; border-radius: 6px; background: #fffaf0; }
+.banner { border-radius: 6px; border: 1px dashed currentColor; }
+.search-box input { border-radius: 6px; border-color: #d6c7ac; font-family: var(--serif); }
+.av.letter { box-shadow: 0 0 0 1.5px var(--card), 0 0 0 2.5px #d6c7ac; }

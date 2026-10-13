@@ -4,7 +4,7 @@ import { uid, receiptKey } from './store.js';
 import { itemBreakdown, tripRates, expenseValue } from './calc.js';
 import { loadImage, makeAvatar, compressReceipt } from './media.js';
 import { recognizeReceipts, dictHint } from './ocr.js';
-import { aiReady, aiReadReceipt } from './ai.js';
+import { aiReady, aiReadReceipt, modelLabel } from './ai.js';
 import { mountRangeCalendar, tripDays } from './calendar.js';
 import {
   CATS, CURRENCIES, AVATAR_EMOJIS, flag, $, $$, esc, twd, money, rateStr, num, today, dayLabel, ls, toast, avatar,
@@ -335,7 +335,8 @@ export function openExpenseForm(id) {
       <div class="field"><div class="label">幣別</div>
         <div class="seg">${curOpts.map((c) => radio('currency', c, `${flag(c)} ${c === 'TWD' ? '台幣' : c}`, v.currency === c)).join('')}</div></div>
       <div class="field"><label for="f-amount">金額</label>
-        <div class="amount-input"><span class="flag-in"></span><input id="f-amount" name="amount" inputmode="decimal" value="${v.amount ?? ''}" placeholder="0"><span class="unit"></span></div></div>
+        <div class="amount-input"><span class="flag-in"></span><input id="f-amount" name="amount" inputmode="decimal" value="${v.amountPending ? '' : (v.amount ?? '')}" placeholder="${v.amountPending ? '金額待補' : '0'}"><span class="unit"></span></div>
+        <div class="hint">還不知道金額？可以先留空儲存成「金額待補」，之後再補。</div></div>
       <div class="field"><label for="f-title">項目</label><input id="f-title" name="title" value="${esc(v.title)}" placeholder="例如：松本清藥妝"></div>
       <div class="field"><div class="label">分類 <span class="cat-hint small muted"></span></div>
         <div class="opts">${radio('category', '', '未分類', !v.category)}${CATS.map((c) => radio('category', c.id, `${c.icon} ${c.name}`, v.category === c.id)).join('')}</div></div>
@@ -610,7 +611,7 @@ export function openExpenseForm(id) {
       const preview = goodItems.slice(0, 6).map((it) => `
         <div class="ocr-item"><span class="oi-name">${esc(it.nameZh || it.name)}${it.nameZh && it.nameZh !== it.name ? `<small>${esc(it.name)}</small>` : ''}</span><span class="num">${money(it.amount, c)}</span></div>`).join('');
       box.innerHTML = `
-        <div class="ocr-head">🔍 辨識結果 <span class="tag ${r.engine === 'gemini' ? '' : 'warn'}">${r.engine === 'gemini' ? 'Gemini' : '手機辨識'}</span>
+        <div class="ocr-head">🔍 辨識結果 <span class="tag ${r.engine === 'gemini' ? '' : 'warn'}">${r.engine === 'gemini' ? `Gemini${r.model ? ' ' + esc(modelLabel(r.model)) : ''}` : '手機辨識'}</span>
           <span class="muted small">請核對金額</span></div>
         ${r.storeZh || r.store ? `<div class="kv"><span class="k">店家</span><span class="v">${esc(r.storeZh || r.store)}${r.storeZh && r.store && r.storeZh !== r.store ? `<small class="muted">（${esc(r.store)}）</small>` : ''}</span></div>` : ''}
         <div class="kv"><span class="k">總額</span><span class="v">${r.total ? `<b>${money(r.total, c)}</b> <button type="button" class="btn small secondary" data-ocr-total>填入</button>` : '沒找到'}</span></div>
@@ -701,30 +702,37 @@ export function openExpenseForm(id) {
       if ((!amount || amount <= 0) && cleanItems.length) {
         amount = cleanItems.reduce((a, it) => a + it.amount, 0);
       }
-      if (!amount || amount <= 0) { toast('請輸入金額'); form.amount.focus(); return; }
+      let amountPending = false;
+      if (amount != null && amount < 0) { toast('金額不能是負的'); form.amount.focus(); return; }
+      if (!amount) {
+        if (!form.title.value.trim()) { toast('請輸入金額；先不填金額的話，至少要寫「項目」'); form.title.focus(); return; }
+        if (!confirm('還沒填金額，要先存成「金額待補」嗎？\n補上金額之前，這筆不會算進總額和結算。')) { form.amount.focus(); return; }
+        amountPending = true;
+        amount = 0;
+      }
       const participants = $$('input[name=part]:checked', form).map((x) => x.value);
       if (splitMode === 'equal' && !participants.length) { toast('至少要勾一位分攤的人'); return; }
-      if (splitMode === 'items' && !cleanItems.length) { toast('逐項分至少要有一個有金額的品項'); return; }
+      if (splitMode === 'items' && !cleanItems.length && !amountPending) { toast('逐項分至少要有一個有金額的品項'); return; }
       const currency = cur();
       const method = form.method.value;
       const data = {
         title: form.title.value.trim(),
         category: form.category.value || null,
-        currency, amount, method,
+        currency, amount, amountPending, method,
         paidBy: form.paidBy.value,
         splitMode,
         participants: splitMode === 'equal' ? participants : splitMode === 'self' ? [form.paidBy.value] : ids,
         items: cleanItems,
         billedTwd: method === 'card' && currency !== 'TWD' ? num(form.billedTwd.value) : null,
-        date: form.date.value || today(),
-        note: form.note.value.trim(),
+        date: form.date.value || (e ? (e.date || null) : today()), // 原本沒日期的（例如從 Excel 匯入）保持空白
+        note: (() => { const n = form.note.value.trim(); return !amountPending && n === '金額待補' ? '' : n; })(),
         receiptCount: receiptsChanged ? receipts.length : oldCount,
         hasReceipt: (receiptsChanged ? receipts.length : oldCount) > 0,
         updatedAt: Date.now(),
       };
       data.translatePending = data.items.some((it) => needsTranslate(it) && it.zhSource !== 'ai' && it.zhSource !== 'user');
       ls.set('tl_lastMethod', method);
-      ls.set('tl_lastDate_' + trip.id, data.date);
+      if (data.date) ls.set('tl_lastDate_' + trip.id, data.date);
       const expId = e ? e.id : S.store.newId();
       try {
         if (receiptsChanged) {
@@ -738,7 +746,7 @@ export function openExpenseForm(id) {
       if (e) S.store.updateItem(S.tripId, 'expenses', e.id, data);
       else S.store.addItem(S.tripId, 'expenses', { ...data, createdAt: Date.now(), createdBy: getMe() }, expId);
       closeSheet();
-      toast(e ? '已更新' : '已新增');
+      toast(amountPending ? '已存成「金額待補」' : e?.amountPending ? '已補上金額' : e ? '已更新' : '已新增');
     });
   }, { tall: true });
 }

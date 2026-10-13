@@ -10,7 +10,8 @@
 //   trips/{tripId}/receipts/{key}       收據照片（需要時才讀取，避免每次同步都下載照片）
 //
 // 帳本代碼 = ledgerId；旅程不再需要各自的代碼，加入帳本就能看到裡面所有旅程。
-import { firebaseConfig } from './firebase-config.js';
+// 用 * 匯入：舊版的 firebase-config.js 沒有 appCheckSiteKey 也不會出錯
+import * as CFG from './firebase-config.js';
 import { setFirebaseApp } from './ai.js';
 
 export const FIREBASE_VERSION = '12.19.0';
@@ -25,7 +26,7 @@ export function uid(n = 12) {
 export const receiptKey = (expenseId, i) => (i === 0 ? expenseId : `${expenseId}_${i + 1}`);
 
 export async function createStore() {
-  if (firebaseConfig && firebaseConfig.apiKey) return createFirebaseStore(firebaseConfig);
+  if (CFG.firebaseConfig && CFG.firebaseConfig.apiKey) return createFirebaseStore(CFG.firebaseConfig, CFG.appCheckSiteKey);
   return createLocalStore();
 }
 
@@ -111,6 +112,16 @@ function createLocalStore() {
     },
     updateLedger(id, patch) { applyPatch(db.ledgers[id], patch); save(); },
     async ledgerExists(id) { return !!db.ledgers[id]; },
+    async getLedger(id) { const l = db.ledgers[id]; return l ? { id, ...structuredClone(l) } : null; },
+    /** 旅程整趟搬到另一本帳本（資料、收據都不動，只換所屬帳本） */
+    async moveTrip(tid, fromLid, toLid) {
+      db.trips[tid].ledgerId = toLid;
+      const to = db.ledgers[toLid];
+      to.tripIds = [...new Set([...(to.tripIds || []), tid])];
+      const from = db.ledgers[fromLid];
+      if (from) from.tripIds = (from.tripIds || []).filter((x) => x !== tid);
+      save();
+    },
     async deleteLedger(id) {
       for (const tid of db.ledgers[id]?.tripIds || []) await store.deleteTrip(id, tid, true);
       delete db.ledgers[id];
@@ -149,7 +160,7 @@ function createLocalStore() {
 }
 
 /* ================= Firebase 雲端同步 ================= */
-async function createFirebaseStore(cfg) {
+async function createFirebaseStore(cfg, appCheckSiteKey) {
   const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/`;
   const [appMod, fs, authMod] = await Promise.all([
     import(base + 'firebase-app.js'),
@@ -163,6 +174,16 @@ async function createFirebaseStore(cfg) {
   } = fs;
 
   const app = appMod.initializeApp(cfg);
+  // App Check（選用）：確認連到資料庫和 Gemini 的是你網址上的這個 App，別人拿走設定碼也用不了
+  let appCheck = false;
+  if (appCheckSiteKey) {
+    try {
+      if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; // 在自己電腦測試用
+      const ac = await import(base + 'firebase-app-check.js');
+      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+      appCheck = true;
+    } catch (e) { console.warn('App Check 啟用失敗', e); }
+  }
   setFirebaseApp(app);
   // 離線快取：沒網路也能記帳，連上網後自動同步
   const db = initializeFirestore(app, {
@@ -186,6 +207,7 @@ async function createFirebaseStore(cfg) {
 
   const store = {
     mode: 'firebase',
+    appCheck,
     onError: null,
 
     /** 訂閱整本帳本：帳本本身 + 裡面每一趟旅程的支出與換匯 */
@@ -238,6 +260,15 @@ async function createFirebaseStore(cfg) {
     },
     updateLedger(id, patch) { updateDoc(doc(db, 'ledgers', id), patch).catch(fail); },
     async ledgerExists(id) { return (await getDoc(doc(db, 'ledgers', id))).exists(); },
+    async getLedger(id) { const s = await getDoc(doc(db, 'ledgers', id)); return s.exists() ? { id: s.id, ...s.data() } : null; },
+    async moveTrip(tid, fromLid, toLid) {
+      // 三個變動一起送出：要嘛全部成功、要嘛都不改
+      const b = writeBatch(db);
+      b.update(doc(db, 'trips', tid), { ledgerId: toLid });
+      b.update(doc(db, 'ledgers', toLid), { tripIds: arrayUnion(tid) });
+      b.update(doc(db, 'ledgers', fromLid), { tripIds: arrayRemove(tid) });
+      await b.commit(); // 呼叫前已確認有網路（離線時這裡會一直等到連上線）
+    },
     async deleteLedger(id) {
       const s = await getDoc(doc(db, 'ledgers', id));
       for (const tid of s.data()?.tripIds || []) await store.deleteTrip(id, tid, true);

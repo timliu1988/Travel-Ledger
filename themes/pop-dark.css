@@ -1,0 +1,38 @@
+@import url('pop.css');
+/* D、E 深色版共用的基礎（黑底、米白框線）；實際使用的是 pop-dark-navy.css 和 outline-dark.css */
+:root {
+  --bg: #111111; --card: #1d1d1d; --ink: #fff4e0; --muted: #b9b2a6;
+  --brand-soft: #3a3320; --warn-soft: #ffd23f; --warn: #151515; --pos: #3ddc97; --neg: #ff7aa2; --danger: #ff7aa2;
+  --shadow: 4px 4px 0 #fff4e0; color-scheme: dark; --brand-ink: var(--on);
+}
+html, body { background: #111; }
+/* 放在亮色色塊上的字一律用深色 */
+.trip-card2, .person, .stat-tiles .tile, .btn, .fab, .tag, .item .ic, .transfer b, .amount-input input,
+.opt input:checked + span, nav.tabs button.on .i, header.top .icon-btn { color: var(--on); }
+.trip-card2 .muted, .person .muted, .person .p-sub { color: #2a2a2a; }
+.btn.secondary, .btn.danger { background: var(--card); color: var(--ink); }
+.btn.danger { color: #ff7aa2; }
+header.top { background: #111; border-bottom-color: var(--ink); }
+header.top h1 { color: #ffd23f; }
+header.top .sub { color: var(--muted); }
+header.top .icon-btn { color: #ffd23f; }
+nav.tabs { background: #1d1d1d; }
+nav.tabs button { color: var(--ink); }
+nav.tabs button.on { color: #ffd23f; }
+.sheet { background: #1d1d1d; }
+.sheet-head { color: var(--on); }
+.sheet-head .icon-btn { color: var(--on); }
+.item .ic[data-cat=none], .item .ic:not([data-cat]) { background: #e8e1d4; }
+.person .pos, .person .neg { color: var(--on); background: #fff; border-color: var(--on); }
+.banner { color: var(--on); }
+.chip { background: var(--card); color: var(--ink); }
+.opt > span { background: var(--card); }
+.seg { background: var(--card); }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { background: #262626; color: var(--ink); }
+.bar-track { background: #262626; }
+.it-zh-ic { background: #3a3320; color: #ffd23f; }
+.av { box-shadow: 0 0 0 2px var(--ink); }
+.tag.warn { color: var(--on); }
+.stat-tiles .tile small, .stat-tiles .tile .v small { color: #333; }
+.tag.go { background: rgba(74,222,128,.16); color: #4ade80; }
+.member-line .trip-flag { background: transparent; color: var(--ink); }

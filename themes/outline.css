@@ -1,0 +1,35 @@
+@import url('pop.css');
+/* ===== E 霓虹框 Outline・淺色：白卡片，顏色只在粗框線、實心陰影、標題 ===== */
+:root {
+  --bg: #fffaf1; --pink: #ff4f86; --blue: #2f80ff; --green: #13b874; --orange: #ff7a1a; --purple: #8f5cff; --yellow: #f5b800;
+}
+header.top { background: #fffaf1; }
+header.top h1 { color: #151515; }
+main > .trip-card2 { background: #fff !important; --c: var(--pink); border-color: var(--c); box-shadow: 4px 4px 0 var(--c); }
+main > .trip-card2:nth-child(4n+3) { --c: var(--blue); }
+main > .trip-card2:nth-child(4n) { --c: var(--green); }
+main > .trip-card2:nth-child(4n+1) { --c: var(--orange); }
+.trip-card2 .muted, .trip-card2 .trip-sum .muted { color: var(--muted); }
+.trip-card2 .t { color: var(--c); }
+.trip-flag { background: #fff; border-color: var(--c, var(--ink)); }
+.person { background: #fff !important; border-color: var(--pink); box-shadow: 4px 4px 0 var(--pink); }
+.person + .person { border-color: var(--blue); box-shadow: 4px 4px 0 var(--blue); }
+.person .muted, .person .p-sub { color: var(--muted); }
+.person .pos, .person .neg { background: transparent; border-color: currentColor; }
+.person .pos { color: var(--green); } .person .neg { color: var(--pink); }
+.stat-tiles .tile { background: #fff !important; --c: var(--yellow); border-color: var(--c); box-shadow: 4px 4px 0 var(--c); }
+.stat-tiles .tile:nth-child(2) { --c: var(--green); } .stat-tiles .tile:nth-child(3) { --c: var(--blue); } .stat-tiles .tile:nth-child(4) { --c: var(--pink); }
+.stat-tiles .tile .v { color: var(--c); } .stat-tiles .tile .k, .stat-tiles .tile small { color: var(--muted) !important; }
+.item .ic { background: #fff !important; border-color: currentColor; }
+.item .ic[data-cat=food] { color: var(--orange); } .item .ic[data-cat=transport] { color: var(--blue); }
+.item .ic[data-cat=stay] { color: var(--purple); } .item .ic[data-cat=shopping] { color: var(--pink); }
+.item .ic[data-cat=fun] { color: var(--green); } .item .ic[data-cat=tag] { color: var(--yellow); } .item .ic[data-cat=none] { color: #151515; }
+.tag, .tag.warn { background: #fff; color: #c98a00; border-color: #f5b800; }
+.sheet-head { background: #fff; border-bottom-color: #f5b800; }
+.sheet { border-color: #f5b800; }
+.amount-input input { background: #fff; border-color: #f5b800; box-shadow: 4px 4px 0 #f5b800; }
+.bar-track i { background: var(--pink); }
+.transfer b { background: #fff; color: #151515; border-color: #f5b800; box-shadow: 3px 3px 0 #f5b800; }
+.fab { background: #fff; color: var(--pink); border-color: var(--pink); box-shadow: 4px 4px 0 var(--pink); }
+.fab .ico { stroke-width: 2.6; }
+.tag.warn { background: #fff; }

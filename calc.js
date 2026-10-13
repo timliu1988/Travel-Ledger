@@ -15,6 +15,8 @@
 //   twd   全換台幣 → 外幣 × 付款人的匯率
 //   local 全換外幣 → 台幣 ÷ 付款人的匯率
 //
+// 金額待補（amountPending）：先記下項目、之後再補金額；補上前不算進總額、結算、統計
+//
 // 分攤規則
 //   個人   → 付款人自己的花費，不分給別人
 //   平分   → 勾選的人平均分
@@ -79,6 +81,8 @@ export function tripRates(trip, exchanges) {
 
 /** 一筆支出：結算幣別、金額、約合台幣、約合當地貨幣 */
 export function expenseValue(e, trip, rates) {
+  // 金額待補：先不算進任何總額與結算
+  if (e.amountPending) return { cur: e.currency, amt: 0, twd: 0, local: 0, kind: 'noamount' };
   const isLocal = e.currency === trip.currency;
   const pr = rates.rateOf(e.paidBy);
   const toLocal = (twd) => (pr ? twd / pr : null);
@@ -133,6 +137,7 @@ export function calc(data, mode = 'split') {
   let totalTwd = 0, noRate = 0, noTwd = 0, noLocal = 0;
   const rows = expenses.map((e) => ({ ...e, val: expenseValue(e, trip, rates), fractions: shareFractions(e, ids) }));
   for (const r of rows) {
+    if (r.amountPending) continue;
     const { cur, amt, twd, local } = r.val;
     addTo(byCur, cur, amt);
     if (twd != null) totalTwd += twd; else { noRate++; noTwd++; }
@@ -188,12 +193,15 @@ export function calc(data, mode = 'split') {
   }
   const settlements = Object.entries(balances).map(([cur, b]) => ({ cur, balances: b, transfers: settle(b, cur) }));
 
-  const isPendingBill = (r) => r.currency !== 'TWD' && r.method === 'card' && r.billedTwd == null;
+  const isPendingBill = (r) => !r.amountPending && r.currency !== 'TWD' && r.method === 'card' && r.billedTwd == null;
+  const isNoAmount = (r) => !!r.amountPending;
   return {
     rows, per, rates, byCur, curs, totalTwd, noRate, cashCheck,
     mode: usedMode, requestedMode: mode, convertible, settlements,
     pendingN: rows.filter(isPendingBill).length,
     isPendingBill,
+    noAmountN: rows.filter(isNoAmount).length,
+    isNoAmount,
   };
 }
 
@@ -226,7 +234,7 @@ export function ledgerStats(tripsData, { year = 'all', memberId = 'all' } = {}) 
     const tLocal = {};
     for (const r of c.rows) {
       const f = memberId === 'all' ? 1 : (r.fractions[memberId] || 0);
-      if (!f) continue;
+      if (!f || r.amountPending) continue;
       addTo(tLocal, r.val.cur, r.val.amt * f);
       if (r.val.twd == null) { noRate++; continue; }
       const v = r.val.twd * f;

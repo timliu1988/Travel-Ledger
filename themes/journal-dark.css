@@ -1,0 +1,45 @@
+@import url('journal.css');
+/* ===== B 旅行手帳 Journal・深色 — 夜晚的皮革手帳 ===== */
+:root {
+  --bg: #1b1611; --card: #28211a; --text: #eee4d3; --muted: #a7977f; --line: #43382b; --ink: #f3e6cf;
+  --brand: #e5845a; --brand-ink: #1b1611; --brand-soft: rgba(229,132,90,.16);
+  --warn: #f0a868; --warn-soft: rgba(240,168,104,.12); --pos: #7cc79f; --neg: #e5845a; --danger: #ef7a66;
+  --shadow: 0 1px 0 #120e0a, 0 8px 18px rgba(0,0,0,.35); color-scheme: dark;
+}
+html, body { background-color: var(--bg); }
+body { background-image: radial-gradient(#2f271e 1px, transparent 1.3px); }
+header.top { background: rgba(27,22,17,.94); border-bottom-color: #4a3d2e; }
+.year-head::after { background: var(--brand); }
+.day { border-bottom-color: #4a3d2e; }
+.trip-card2 { background: linear-gradient(90deg, #332a20 0 84px, var(--card) 84px); }
+.trip-open2 { background-image: linear-gradient(#5a4a37 50%, transparent 50%); }
+.person.me { background: #2f271f; }
+.person::before { background: rgba(229,132,90,.35); }
+.person + .person::before { background: rgba(110,150,180,.35); }
+.item { border-bottom-color: #3d3226; }
+.item .ic[data-cat=food] { color: #e5845a; }
+.item .ic[data-cat=transport] { color: #8db6d4; }
+.item .ic[data-cat=stay] { color: #b9a0d6; }
+.item .ic[data-cat=shopping] { color: #e092b2; }
+.item .ic[data-cat=fun] { color: #8ec79c; }
+.chip { background: var(--card); border-color: #4a3d2e; }
+.chip.on, .opt input:checked + span, .seg .opt input:checked + span { background: var(--ink); border-color: var(--ink); color: #1b1611; }
+.opt > span { border-color: #4a3d2e; background: transparent; }
+.seg { border-color: #4a3d2e; }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { background: #221c16; border-color: #4a3d2e; color: var(--text); }
+.amount-input input { background: transparent; border-color: var(--ink); }
+.btn.secondary { color: var(--ink); border-color: var(--ink); }
+.fab { box-shadow: 0 0 0 4px var(--bg), 0 0 0 5.5px var(--brand), 0 8px 18px rgba(0,0,0,.5); color: #1b1611; }
+nav.tabs { background: rgba(36,30,24,.97); border-top-color: #4a3d2e; }
+nav.tabs button { color: #8a7b65; }
+.sheet { background-color: var(--card); background-image: repeating-linear-gradient(transparent 0 31px, #322a21 31px 32px); }
+.sheet-head { border-bottom-color: #4a3d2e; }
+.stat-tiles .tile:first-child { background: var(--ink); border-color: var(--ink); }
+.stat-tiles .tile:first-child .k, .stat-tiles .tile:first-child .v { color: #1b1611; }
+.bar-track { border-color: #4a3d2e; }
+.bar-track i { background: repeating-linear-gradient(45deg, #e5845a 0 6px, #c9663e 6px 12px); }
+.transfer { border-bottom-color: #4a3d2e; }
+.cash-card { background: #2c241c; }
+.av.letter { box-shadow: 0 0 0 1.5px var(--card), 0 0 0 2.5px #5a4a37; }
+.it-row { background: #221c16; }
+.tag.go { background: rgba(74,222,128,.16); color: #4ade80; }

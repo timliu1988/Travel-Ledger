@@ -7,6 +7,11 @@ import { FIREBASE_VERSION } from './store.js';
 const MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 let firebaseApp = null;
 let aiPromise = null;
+let lastModel = ''; // 最近一次實際用到的模型（顯示在辨識結果上）
+
+/** 'gemini-3.5-flash-lite' → '3.5 Flash-Lite' */
+export const modelLabel = (id) => String(id || '').replace(/^gemini-/, '').split('-')
+  .map((w, i) => (i === 0 ? w : w[0].toUpperCase() + w.slice(1))).join(' ').replace(' Lite', '-Lite');
 
 /** store.js 建立 Firebase 後呼叫，把 app 交給這裡共用 */
 export function setFirebaseApp(app) { firebaseApp = app; }
@@ -36,6 +41,7 @@ async function generate(parts) {
         generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
       });
       const res = await model.generateContent(parts);
+      lastModel = name;
       return res.response.text();
     } catch (e) {
       lastErr = e;
@@ -95,6 +101,7 @@ export async function aiReadReceipt(dataUrls, currency) {
   const num = (v) => (typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/[^\d.\-]/g, '')));
   return {
     engine: 'gemini',
+    model: window.__tlAiMock ? 'gemini-mock' : lastModel,
     store: r.store || '',
     storeZh: r.storeZh || '',
     date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date : null,

@@ -1,0 +1,40 @@
+@import url('mist.css');
+/* ===== A 清透 Mist・深色 — iPhone 原生深色模式的質感 ===== */
+:root {
+  --bg: #000000; --card: #1c1c1e; --text: #f5f5f7; --muted: #8e8e93; --line: #2c2c2e;
+  --brand: #4d82ff; --brand-ink: #fff; --brand-soft: rgba(77,130,255,.18);
+  --warn: #ffb340; --warn-soft: rgba(255,179,64,.14); --pos: #32d583; --neg: #ff6b81; --danger: #ff6b81;
+  --shadow: none; color-scheme: dark;
+}
+header.top { background: rgba(0,0,0,.72); }
+.item { border-bottom-color: #2c2c2e; }
+.item .ic { background: #2c2c2e; color: #aeaeb2; }
+.item .ic[data-cat=food] { background: rgba(249,115,22,.16); color: #ff9f4a; }
+.item .ic[data-cat=transport] { background: rgba(77,130,255,.18); color: #7aa2ff; }
+.item .ic[data-cat=stay] { background: rgba(139,92,246,.2); color: #b49bff; }
+.item .ic[data-cat=shopping] { background: rgba(236,72,153,.18); color: #ff7ab8; }
+.item .ic[data-cat=fun] { background: rgba(16,185,129,.18); color: #45d6a0; }
+.item .s .ico { color: #6e6e73; }
+.chip { background: #1c1c1e; }
+.opt > span { background: #2c2c2e; }
+.seg { background: #1c1c1e; }
+.sheet .seg { background: #2c2c2e; }
+.seg .opt > span { color: #8e8e93; }
+.seg .opt input:checked + span { background: #48484a; color: #fff; box-shadow: none; }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { background: #2c2c2e; color: var(--text); }
+.amount-input input { background: rgba(77,130,255,.16); }
+.btn.danger { background: rgba(255,107,129,.12); }
+nav.tabs { background: rgba(28,28,30,.82); box-shadow: 0 10px 30px rgba(0,0,0,.6); }
+nav.tabs button { color: #6e6e73; }
+nav.tabs button.on { color: #7aa2ff; }
+.person.me { background: linear-gradient(140deg, #2a5cf0 0%, #3f6ff5 60%, #5a86ff 100%); box-shadow: 0 10px 26px rgba(42,92,240,.35); }
+.stat-tiles .tile:first-child { background: #f5f5f7; color: #000; }
+.stat-tiles .tile:first-child .k { color: #6e6e73; }
+.bar-track { background: #2c2c2e; }
+.cash-card { background: #242426; }
+.trip-flag { background: #2c2c2e; }
+.sheet { background: #1c1c1e; }
+.sheet .card, .sheet .it-row { background: #242426; }
+.sheet-backdrop { background: rgba(0,0,0,.55); }
+.av { box-shadow: 0 0 0 1.5px #1c1c1e; }
+.tag.go { background: rgba(74,222,128,.16); color: #4ade80; }

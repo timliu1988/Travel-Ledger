@@ -1,0 +1,33 @@
+@import url('pop-dark.css');
+/* ===== E 霓虹框 Outline・深色：卡片都是深色，顏色只用在框線和陰影 ===== */
+:root { --shadow: 4px 4px 0 #fff4e0; }
+main > .trip-card2 { background: var(--card) !important; color: var(--ink); --c: var(--pink); border-color: var(--c); box-shadow: 4px 4px 0 var(--c); }
+main > .trip-card2:nth-child(4n+3) { --c: var(--blue); }
+main > .trip-card2:nth-child(4n) { --c: var(--green); }
+main > .trip-card2:nth-child(4n+1) { --c: var(--orange); }
+.trip-card2 .muted, .trip-card2 .trip-sum .muted { color: var(--muted); }
+.trip-card2 .t { color: var(--c); }
+.trip-card2 .more { color: var(--ink); }
+.trip-flag { background: #262626; border-color: var(--c, var(--ink)); }
+.person { background: var(--card) !important; color: var(--ink); border-color: var(--pink); box-shadow: 4px 4px 0 var(--pink); }
+.person + .person { border-color: var(--blue); box-shadow: 4px 4px 0 var(--blue); }
+.person .muted, .person .p-sub { color: var(--muted); }
+.person .pos, .person .neg { background: transparent; color: var(--ink); border-color: currentColor; }
+.person .pos { color: var(--green); } .person .neg { color: var(--pink); }
+.stat-tiles .tile { background: var(--card) !important; color: var(--ink); --c: var(--yellow); border-color: var(--c); box-shadow: 4px 4px 0 var(--c); }
+.stat-tiles .tile:nth-child(2) { --c: var(--green); } .stat-tiles .tile:nth-child(3) { --c: var(--blue); } .stat-tiles .tile:nth-child(4) { --c: var(--pink); }
+.stat-tiles .tile .v { color: var(--c); } .stat-tiles .tile .k, .stat-tiles .tile small { color: var(--muted) !important; }
+.item .ic { background: #262626 !important; border-color: currentColor; }
+.item .ic[data-cat=food] { color: var(--orange); } .item .ic[data-cat=transport] { color: var(--blue); }
+.item .ic[data-cat=stay] { color: var(--purple); } .item .ic[data-cat=shopping] { color: var(--pink); }
+.item .ic[data-cat=fun] { color: var(--green); } .item .ic[data-cat=tag] { color: var(--yellow); } .item .ic[data-cat=none] { color: var(--ink); }
+.tag { background: transparent; color: var(--yellow); border-color: var(--yellow); }
+.tag.warn { color: var(--yellow); }
+.sheet-head { background: #1d1d1d; color: var(--yellow); border-bottom-color: var(--yellow); }
+.sheet-head .icon-btn { color: var(--yellow); }
+.sheet { border-color: var(--yellow); }
+.fab { background: var(--card); color: var(--pink); border-color: var(--pink); box-shadow: 4px 4px 0 var(--pink); }
+.fab .ico { stroke-width: 2.6; }
+.amount-input input { background: var(--card); color: var(--ink); border-color: var(--yellow); box-shadow: 4px 4px 0 var(--yellow); }
+.transfer b { background: var(--card); color: var(--ink); border-color: var(--yellow); box-shadow: 3px 3px 0 var(--yellow); }
+.tag.warn { background: transparent; }

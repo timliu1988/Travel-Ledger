@@ -2,6 +2,8 @@
 import { S, getMe, member, memberName, ledgerMembers, myLedgers, allTrips, deletedTrips, daysLeft } from './state.js';
 import { calc, ledgerStats } from './calc.js';
 import { searchAll } from './search.js';
+import { appBuild } from './update.js';
+import { THEMES, MODES, getTheme, getMode } from './theme.js';
 import { fmtRange, ymd } from './calendar.js';
 import {
   CATS, catOf, flag, countryName, esc, fmt, twd, money, moneyMulti, rateStr, dayLabel, avatar, ls,
@@ -29,7 +31,8 @@ export function welcomeHTML() {
 
 /* ---------- 旅程列表 ---------- */
 export function tripsTab() {
-  const trips = allTrips().sort((a, b) => (b.trip.startDate || '9').localeCompare(a.trip.startDate || '9'));
+  // 有日期的依出發日由新到舊，沒設定日期的排在最後（依建立順序）
+  const trips = allTrips().sort((a, b) => (b.trip.startDate || '').localeCompare(a.trip.startDate || '') || (a.trip.createdAt || 0) - (b.trip.createdAt || 0));
   const now = ymd(new Date());
   const status = (t) => {
     if (!t.startDate) return '';
@@ -52,7 +55,7 @@ export function tripsTab() {
           <span class="mid">
             <div class="t">${esc(trip.name)} ${status(trip)}</div>
             <div class="small muted">${trip.startDate ? esc(fmtRange(trip.startDate, trip.endDate)) : '未設定日期'}</div>
-            <div class="small trip-sum">${d.expenses.length ? `${moneyMulti(c.byCur, false)}${c.curs.some((k) => k !== 'TWD') && c.totalTwd ? ` <span class="muted">≈ ${twd(c.totalTwd)}</span>` : ''}` : '<span class="muted">還沒有帳目</span>'}</div>
+            <div class="small trip-sum">${d.expenses.length ? `${moneyMulti(c.byCur, false)}${c.curs.some((k) => k !== 'TWD') && c.totalTwd ? ` <span class="muted">≈ ${twd(c.totalTwd)}</span>` : ''}${c.noAmountN ? ` <span class="tag warn">${c.noAmountN} 筆金額待補</span>` : ''}` : '<span class="muted">還沒有帳目</span>'}</div>
             <div class="av-stack">${ms.slice(0, 7).map((m) => avatar(m, 22)).join('')}${ms.length > 7 ? `<span class="av-more">+${ms.length - 7}</span>` : ''}</div>
           </span>
         </button>
@@ -107,7 +110,7 @@ export function searchResultsHTML() {
         <span class="mid"><div class="t">${esc(title)}</div>
           ${orig ? `<div class="s">${esc(orig)}</div>` : ''}
           <div class="s">${dayLabel(e.date)} · ${flag(x.trip.currency)} ${esc(x.trip.name)}${x.type === 'item' && e.title ? ' · ' + esc(e.title) : ''}${owners}</div></span>
-        <span class="amt"><div class="f">${money(x.amount, x.cur)}</div>${x.cur !== 'TWD' && x.twd != null ? `<div class="tw">≈ ${twd(x.twd)}</div>` : ''}</span>
+        <span class="amt">${e.amountPending && x.type !== 'item' ? '<div class="tw"><span class="tag warn">金額待補</span></div>' : `<div class="f">${money(x.amount, x.cur)}</div>${x.cur !== 'TWD' && x.twd != null && !e.amountPending ? `<div class="tw">≈ ${twd(x.twd)}</div>` : ''}`}</span>
       </button>`;
     }).join('')}</div>`;
 }
@@ -194,6 +197,17 @@ export function ledgerSettingsTab() {
         <button class="chip av-chip ${m.id === me ? 'on' : ''}" data-act="set-me" data-id="${esc(m.id)}">${avatar(m, 22)} ${esc(m.name)}</button>`).join('')}</div>
     </div>
     <div class="card">
+      <h3>🎨 外觀</h3>
+      <div class="theme-grid">${THEMES.map((t) => `
+        <button class="theme-opt ${getTheme() === t.id ? 'on' : ''}" data-act="set-theme" data-id="${t.id}">
+          <span class="sw"><i style="background:${t.sw[0]}"></i><i style="background:${t.sw[2]}"></i><b style="background:${t.sw[1]}"></b></span>
+          <span class="tn">${esc(t.name)}</span><small>${esc(t.desc)}</small>
+        </button>`).join('')}</div>
+      <div class="seg" style="margin-top:12px">${MODES.map(([k, n]) => `
+        <label class="opt"><input type="radio" name="tmode" value="${k}" data-act="set-mode" ${getMode() === k ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div>
+      <p class="small muted">每個主題都有淺色和深色版。「跟隨系統」會在 iPhone 切到深色模式時自動換成深色版。外觀只存在這支手機，不會影響旅伴。</p>
+    </div>
+    <div class="card">
       <h3>收據辨識</h3>
       <div class="seg" style="margin-bottom:10px">
         <label class="opt"><input type="radio" name="ocrEngine" value="auto" data-act="ocr-engine" ${ls.get('tl_ocrEngine', 'auto') === 'auto' ? 'checked' : ''}><span>Gemini 優先</span></label>
@@ -229,5 +243,11 @@ export function ledgerSettingsTab() {
       <button class="btn danger" data-act="delete-ledger">🗑 刪除整本帳本（所有人）</button>
       <p class="small muted">「移除」只是這支手機不再顯示，之後可再用代碼加入；「刪除」會放進最近刪除保留 30 天，期間所有成員都可以復原。</p>
     </div>
-    <p class="small muted center">${S.store.mode === 'firebase' ? '☁️ 雲端同步' : '📱 本機模式'} · v5</p>`;
+    <div class="card">
+      <h3>版本</h3>
+      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.1')}</span></div>
+      <p class="small muted">App 會在背景自動檢查新版，有新版時畫面下方會出現「點此更新」。</p>
+      <button class="btn secondary" data-act="check-update">🔄 檢查更新</button>
+    </div>
+    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.1</p>`;
 }

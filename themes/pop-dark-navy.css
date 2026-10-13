@@ -1,0 +1,30 @@
+@import url('pop-dark.css');
+/* ===== D 活潑撞色 Pop・深色：深藍黑底、粉彩色塊、深色陰影，對比柔和 ===== */
+:root {
+  --bg: #0f1724; --card: #1a2436; --ink: #eef3fa; --muted: #a3b0c6;
+  --pink: #f2a9c4; --blue: #a3c6fb; --green: #a2e3c4; --orange: #ffc39d; --purple: #c9b4ff; --yellow: #ffe08a;
+  --on: #0f1724; --shadow: 4px 4px 0 #060a12;
+}
+html, body { background: #0f1724; }
+.card, .list, .person, .tile, .btn, .fab, .chip, .search-box input, .banner { box-shadow: 4px 4px 0 #060a12; }
+.card, .list, .person, .tile { border-color: #060a12; }
+.trip-card2, .person, .tile { border-color: #060a12 !important; }
+.btn.small, .chip { box-shadow: 2px 2px 0 #060a12; }
+.item { border-bottom-color: #2c3a52; }
+.item .ic { border-color: #060a12; }
+.trip-flag, .av { border-color: #060a12; }
+.av { box-shadow: 0 0 0 2px #060a12; }
+header.top { background: #0f1724; border-bottom-color: #060a12; }
+header.top h1, header.top .icon-btn { color: var(--yellow); }
+nav.tabs { background: #1a2436; border-top-color: #060a12; }
+nav.tabs button.on .i { border-color: #060a12; }
+.sheet { border-color: #060a12; background: #1a2436; }
+.sheet-head { border-bottom-color: #060a12; }
+.chip, .opt > span, .seg, input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { border-color: #060a12; }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { background: #141d2c; }
+.seg .opt input:checked + span, .chip.on { background: var(--ink); color: var(--on); }
+.year-head { background: var(--ink); color: var(--on); }
+.transfer { border-bottom-color: #2c3a52; }
+.trip-card2 .muted, .person .muted, .person .p-sub { color: #46506a; }
+.stat-tiles .tile .k, .stat-tiles .tile small { color: #3a4560 !important; }
+.it-row, .cash-card { border-color: #060a12; }

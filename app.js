@@ -1,4 +1,4 @@
-// 旅伴記帳 v5 — 主程式：畫面切換、按鈕事件、啟動
+// 旅伴記帳 v5.1 — 主程式：畫面切換、按鈕事件、啟動
 import { createStore, uid, receiptKey } from './store.js';
 import { calc } from './calc.js';
 import { aiReady, aiTranslateNames } from './ai.js';
@@ -15,6 +15,9 @@ import {
   openLedgerForm, openJoin, openWhoAmI, openRenameLedger, openRateForm, openCashForm,
 } from './forms.js';
 import { exportLedger, importLedger, exportCsv } from './backup.js';
+import { initUpdates, checkNow } from './update.js';
+import { openMoveTrip } from './move.js';
+import { applyTheme, setTheme, setMode } from './theme.js';
 
 /* ================= 畫面 ================= */
 function draw() {
@@ -182,6 +185,8 @@ function openTripMenu(tid) {
   openSheet(d.trip.name, `
     <button class="btn secondary" data-act="menu-open" data-id="${esc(tid)}">打開旅程</button>
     <button class="btn secondary" data-act="edit-trip" data-id="${esc(tid)}">✏️ 編輯旅程（名稱、日期、幣別、旅伴）</button>
+    <button class="btn secondary" data-act="move-trip" data-id="${esc(tid)}">📦 移到其他帳本</button>
+    <button class="btn secondary" data-act="copy-trip" data-id="${esc(tid)}">📄 複製到其他帳本</button>
     <button class="btn danger" data-act="delete-trip" data-id="${esc(tid)}">🗑 刪除旅程</button>`);
 }
 
@@ -461,6 +466,7 @@ document.addEventListener('click', async (ev) => {
     }
     case 'tab': S.tab = el.dataset.tab; render(); window.scrollTo(0, 0); break;
     case 'filter': S.filter = el.dataset.filter; render(); break;
+    case 'goto-noamount': S.tab = 'list'; S.filter = 'noamount'; render(); window.scrollTo(0, 0); break;
     case 'settle-mode': store.updateTrip(S.tripId, { settleMode: el.value }); break;
     // 支出
     case 'add-expense': openExpenseForm(); break;
@@ -497,6 +503,16 @@ document.addEventListener('click', async (ev) => {
     // 設定
     case 'toggle-autoocr': ls.set('tl_autoOcr', el.checked); break;
     case 'ocr-engine': ls.set('tl_ocrEngine', el.value); break;
+    case 'check-update': {
+      toast('檢查中…');
+      const r = await checkNow();
+      toast({ found: '找到新版本，下載好會出現「點此更新」', latest: '已經是最新版', offline: '目前沒有網路', unsupported: '這個瀏覽器不支援自動更新' }[r] || '');
+      break;
+    }
+    case 'set-theme': setTheme(id); render(); break;
+    case 'set-mode': setMode(el.value); render(); break;
+    case 'move-trip': closeAllSheets(); openMoveTrip(id, 'move'); break;
+    case 'copy-trip': closeAllSheets(); openMoveTrip(id, 'copy'); break;
   }
 });
 
@@ -517,14 +533,13 @@ document.addEventListener('keydown', (ev) => {
 
 /* ================= 啟動 ================= */
 (async function start() {
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW', e));
-  }
+  applyTheme(); // 外觀主題（樣式檔已由 index.html 先載入，這裡啟用線條圖示和自動切換深淺色）
+  initUpdates(); // 背景檢查新版本，不擋啟動
   try {
     S.store = await createStore();
     S.store.onError = (err) => {
       console.error(err);
-      toast(err?.code === 'permission-denied' ? '沒有權限：請檢查 Firestore 規則' : '同步失敗：' + (err?.message || err));
+      toast(err?.code === 'permission-denied' ? (S.store?.appCheck ? '沒有權限：請檢查 Firestore 規則或 App Check 設定' : '沒有權限：請檢查 Firestore 規則') : '同步失敗：' + (err?.message || err));
     };
   } catch (err) {
     console.error(err);

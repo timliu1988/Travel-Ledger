@@ -68,6 +68,7 @@ export function listTab(d) {
   const c = calc(d, trip.settleMode || 'split');
   let rows = c.rows;
   if (S.filter === 'pending') rows = rows.filter(c.isPendingBill);
+  if (S.filter === 'noamount') rows = rows.filter(c.isNoAmount);
   rows = [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0));
   const groups = [];
   for (const r of rows) {
@@ -86,7 +87,8 @@ export function listTab(d) {
     else if (ids.length === 1) split = `${esc(memberName(ids[0]))}自己`;
     else split = `${ids.length} 人分`;
     let sub = '';
-    if (r.val.kind === 'billed') sub = `${twd(r.billedTwd)} <span class="tag">已出帳</span>`;
+    if (r.val.kind === 'noamount') sub = '<span class="tag warn">金額待補</span>';
+    else if (r.val.kind === 'billed') sub = `${twd(r.billedTwd)} <span class="tag">已出帳</span>`;
     else if (r.val.kind === 'pending') sub = `${r.val.twd != null ? '≈ ' + twd(r.val.twd) + ' ' : ''}<span class="tag warn">待出帳</span>`;
     else if (r.val.kind === 'cash' && r.val.twd != null) sub = `≈ ${twd(r.val.twd)}`;
     const names = (r.items || []).map((it) => it.nameZh || it.name).filter(Boolean);
@@ -96,7 +98,7 @@ export function listTab(d) {
         <span class="mid"><div class="t">${esc(r.title || cat.name)}</div>
           <div class="s">${r.method === 'card' ? '💳' : '💵'} ${esc(memberName(r.paidBy))}付 · ${split}${r.hasReceipt ? ` · 🧾${(r.receiptCount || 1) > 1 ? '×' + r.receiptCount : ''}` : ''}</div>
           ${names.length ? `<div class="s s2">${esc(names.slice(0, 4).join('、'))}${names.length > 4 ? `…等 ${names.length} 項` : ''}${r.translatePending ? ' <span class="tag warn">待翻譯</span>' : ''}</div>` : ''}</span>
-        <span class="amt"><div class="f"><span class="fl">${flag(r.currency)}</span>${money(r.amount, r.currency)}</div><div class="tw">${sub}</div></span>
+        <span class="amt"><div class="f"><span class="fl">${flag(r.currency)}</span>${r.amountPending ? '<span class="muted">—</span>' : money(r.amount, r.currency)}</div><div class="tw">${sub}</div></span>
       </button>`;
     if (S.filter === 'pending') {
       html += `<div class="bill"><input inputmode="decimal" placeholder="帳單台幣金額" data-bill="${esc(r.id)}" aria-label="台幣出帳金額">
@@ -107,18 +109,20 @@ export function listTab(d) {
 
   return `
     ${peopleSummary(d, c)}
+    ${c.noAmountN && S.filter !== 'noamount' ? `<button class="banner" data-act="filter" data-filter="noamount">✏️ 有 ${c.noAmountN} 筆還沒填金額，補上後才會算進結算 ›</button>` : ''}
     ${c.pendingN && S.filter !== 'pending' ? `<button class="banner" data-act="filter" data-filter="pending">💳 有 ${c.pendingN} 筆刷卡還沒補台幣出帳金額 ›</button>` : ''}
     <div class="chips">
       <button class="chip ${S.filter === 'all' ? 'on' : ''}" data-act="filter" data-filter="all">全部</button>
       <button class="chip ${S.filter === 'pending' ? 'on' : ''}" data-act="filter" data-filter="pending">待補出帳 ${c.pendingN ? `(${c.pendingN})` : ''}</button>
+      ${c.noAmountN || S.filter === 'noamount' ? `<button class="chip ${S.filter === 'noamount' ? 'on' : ''}" data-act="filter" data-filter="noamount">金額待補 ${c.noAmountN ? `(${c.noAmountN})` : ''}</button>` : ''}
     </div>
     ${groups.length ? groups.map((g) => {
       const dayCur = {};
       g.items.forEach((r) => { dayCur[r.val.cur] = (dayCur[r.val.cur] || 0) + r.val.amt; });
       const di = days.indexOf(g.date);
-      return `<div class="day"><span>${dayLabel(g.date)}${di >= 0 ? ` · Day ${di + 1}` : ''}</span><span class="num">${moneyMulti(dayCur, false)}</span></div>
+      return `<div class="day"><span>${g.date ? dayLabel(g.date) : '未填日期'}${di >= 0 ? ` · Day ${di + 1}` : ''}</span><span class="num">${Object.values(dayCur).some((v) => Math.abs(v) >= 0.005) ? moneyMulti(dayCur, false) : ''}</span></div>
         <div class="list">${g.items.map(itemHTML).join('')}</div>`;
-    }).join('') : `<div class="list"><div class="empty">${S.filter === 'pending' ? '刷卡帳目都已補上台幣金額 👍' : '還沒有帳目，按右下角 ＋ 新增第一筆'}</div></div>`}`;
+    }).join('') : `<div class="list"><div class="empty">${S.filter === 'pending' ? '刷卡帳目都已補上台幣金額 👍' : S.filter === 'noamount' ? '金額都補齊了 👍' : '還沒有帳目，按右下角 ＋ 新增第一筆'}</div></div>`}`;
 }
 
 /* ---------- 結算 ---------- */
@@ -142,6 +146,7 @@ export function settleTab(d) {
       ${(trip.settleMode || 'split') !== 'split' ? `<div class="rate-list"><div class="small muted" style="margin:8px 0 2px">每個人的匯率（1 ${esc(trip.currency)} = ? TWD）</div>${memberRatesHTML(trip, c)}</div>` : ''}
       ${c.mode !== c.requestedMode ? `<div class="banner" style="margin:8px 0 0">有人還沒有匯率，或這趟有第三種幣別的支出，暫時用分幣別結算。請到「換匯」新增紀錄或設定匯率。</div>` : ''}
     </div>
+    ${c.noAmountN ? `<button class="banner" data-act="goto-noamount">⚠️ 有 ${c.noAmountN} 筆「金額待補」還沒算進結算，補上金額後結果會改變 ›</button>` : ''}
     ${c.pendingN ? `<div class="banner">ⓘ 有 ${c.pendingN} 筆刷卡還沒出帳，暫時用外幣計算；補上帳單台幣金額後會改用台幣結算。</div>` : ''}
     <div class="card">
       <h3>🤝 轉帳建議</h3>

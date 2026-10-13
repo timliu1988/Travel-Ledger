@@ -13,6 +13,20 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>旅伴記帳</title>
 <link rel="stylesheet" href="style.css">
+<script>
+/* 開 App 時先套用這支手機選的外觀主題（避免畫面先閃一下預設樣式）。對照表要和 theme.js 一致 */
+(function () {
+  try {
+    var get = function (k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+    var F = { mist: ['mist', 'mist-dark'], journal: ['journal', 'journal-dark'], midnight: ['midnight-light', 'midnight'], pop: ['pop', 'pop-dark-navy'], outline: ['outline', 'outline-dark'] };
+    var t = get('tl_theme', 'default'), m = get('tl_mode', 'auto'), r = document.documentElement;
+    var dark = m === 'dark' || (m === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    if (m === 'light' || m === 'dark') r.setAttribute('data-mode', m);
+    r.style.colorScheme = dark ? 'dark' : 'light';
+    if (F[t]) { r.setAttribute('data-theme', t); document.write('<link rel="stylesheet" class="theme-css" href="themes/' + F[t][dark ? 1 : 0] + '.css">'); }
+  } catch (e) { /* 讀不到設定就用預設樣式 */ }
+})();
+</script>
 </head>
 <body>
 <div id="app"><main><p class="muted center">載入中…</p></main></div>

@@ -1,0 +1,53 @@
+@import url('midnight.css');
+/* ===== C 夜旅 Midnight・淺色「晨曦」 — 淡紫藍漸層天空＋白色玻璃卡片 ===== */
+:root {
+  --bg: #eef0fb; --card: rgba(255,255,255,.66); --text: #1e1b4b; --muted: #6b6f9a; --line: rgba(99,102,241,.14);
+  --brand: #5b5ff0; --brand-ink: #fff; --brand-soft: rgba(99,102,241,.12);
+  --warn: #b45309; --warn-soft: rgba(251,191,36,.18); --pos: #0d9488; --neg: #e11d48; --danger: #e11d48;
+  --grad: linear-gradient(135deg, #06b6d4 0%, #6366f1 55%, #a855f7 100%);
+  color-scheme: light;
+}
+html { background: #eef0fb; }
+body { background:
+  radial-gradient(520px 380px at 0% -5%, rgba(129,140,248,.35), transparent 70%),
+  radial-gradient(420px 360px at 105% 18%, rgba(103,232,249,.35), transparent 70%),
+  radial-gradient(500px 420px at 50% 115%, rgba(244,114,182,.22), transparent 70%), #eef0fb;
+  background-attachment: fixed; }
+header.top { background: rgba(238,240,251,.6); }
+.card, .list, .person, .tile { box-shadow: 0 8px 24px rgba(79,70,229,.08); border-color: rgba(255,255,255,.9); }
+.card h3 .ico, .year-head, .day { color: #5b5ff0; }
+.trip-flag { background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,.4)); box-shadow: inset 0 0 0 1px rgba(99,102,241,.15); }
+.trip-sum { color: #3730a3; }
+.trip-card2:nth-child(2) { box-shadow: 0 0 0 1.5px rgba(99,102,241,.4), 0 16px 40px rgba(99,102,241,.18); }
+.person.me { background: linear-gradient(#fff, #fff) padding-box, var(--grad) border-box; box-shadow: 0 12px 30px rgba(99,102,241,.18); }
+.item { border-bottom-color: rgba(99,102,241,.08); }
+.item .ic { background: rgba(99,102,241,.08); color: #64748b; box-shadow: none; }
+.item .ic[data-cat=food] { color: #ea580c; background: rgba(234,88,12,.1); }
+.item .ic[data-cat=transport] { color: #0891b2; background: rgba(8,145,178,.1); }
+.item .ic[data-cat=stay] { color: #7c3aed; background: rgba(124,58,237,.1); }
+.item .ic[data-cat=shopping] { color: #db2777; background: rgba(219,39,119,.1); }
+.item .ic[data-cat=fun] { color: #16a34a; background: rgba(22,163,74,.1); }
+.item .ic > .ico { filter: none; }
+.av { box-shadow: 0 0 0 1.5px #fff; }
+.chip { background: rgba(255,255,255,.7); color: #3730a3; }
+.chip.on, .opt input:checked + span { color: #fff; }
+.opt > span { background: rgba(255,255,255,.75); }
+.seg { background: rgba(99,102,241,.07); }
+.seg .opt input:checked + span { background: #fff; color: #3730a3; box-shadow: 0 2px 8px rgba(79,70,229,.15); }
+input[type=text], input[type=number], input[type=date], input:not([type]), textarea, select { background: rgba(255,255,255,.75); color: var(--text); }
+.btn { color: #fff; }
+.btn.secondary { background: rgba(255,255,255,.75); color: #4338ca; box-shadow: inset 0 0 0 1px rgba(99,102,241,.2); }
+.btn.danger { background: rgba(225,29,72,.06); }
+.fab { color: #fff; box-shadow: 0 0 0 6px rgba(99,102,241,.12), 0 10px 26px rgba(99,102,241,.4); }
+nav.tabs { background: rgba(255,255,255,.72); }
+nav.tabs button { color: #8b8fb8; }
+nav.tabs button.on { color: #4338ca; }
+nav.tabs button.on .ico { filter: drop-shadow(0 0 6px rgba(99,102,241,.45)); color: #5b5ff0; }
+.sheet { background: rgba(248,249,255,.95); border-top-color: #fff; }
+.sheet-backdrop { background: rgba(30,27,75,.25); }
+.stat-tiles .tile:first-child { background: linear-gradient(135deg, rgba(6,182,212,.18), rgba(99,102,241,.18) 55%, rgba(168,85,247,.18)); }
+.bar-track { background: rgba(99,102,241,.08); }
+.bar-track i { box-shadow: 0 0 10px rgba(99,102,241,.35); }
+.cash-card { background: rgba(255,255,255,.5); }
+.search-box input { background: rgba(255,255,255,.9); }
+.code { background: rgba(255,255,255,.6); }
