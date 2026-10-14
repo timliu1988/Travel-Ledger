@@ -562,3 +562,15 @@ header.top .search-btn.on { background: var(--brand-soft); }
   font-size: 11px; line-height: 1; padding: 2px 3px; border-radius: 7px; background: var(--card); box-shadow: 0 0 0 1.5px var(--line); color: var(--text); }
 .item .ic-rc b { font-size: 10px; }
 .item .ic-rc .ico { width: 12px; height: 12px; }
+
+/* v5.3 家庭分帳 */
+.fam-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.fam-chip { font-size: 13px; padding: 4px 10px; }
+.fam-opts .opt > span { flex-wrap: wrap; }
+.fam-ms { display: block; width: 100%; font-size: 11px; color: var(--muted); font-weight: 400; }
+.opt input:checked + span .fam-ms { color: inherit; opacity: .8; }
+.fam-ic { display: inline-grid; place-items: center; border-radius: 50%; background: var(--brand-soft); font-size: 14px; vertical-align: middle; flex: none; }
+.fam-card { padding: 12px; margin-bottom: 10px; }
+.fam-card .fam-name { flex: 1; }
+.fam-switch .seg { margin: 0; }
+.seg .opt > span { white-space: nowrap; }

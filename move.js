@@ -15,10 +15,12 @@ export function remapTripData({ trip, expenses, exchanges }, map) {
   const t = { ...trip, memberIds: (trip.memberIds || []).map(R) };
   if (trip.memberRates) t.memberRates = keys(trip.memberRates);
   if (trip.cash) t.cash = keys(trip.cash);
+  if (trip.families) t.families = trip.families.map((f) => ({ ...f, members: (f.members || []).map(R) }));
   const ex = expenses.map((e) => ({
     ...e,
     paidBy: R(e.paidBy),
     participants: (e.participants || []).map(R),
+    ...(e.families ? { families: e.families.map((g) => (g.startsWith('m:') ? 'm:' + R(g.slice(2)) : g)) } : {}),
     items: (e.items || []).map((it) => ({ ...it, owners: (it.owners || []).map(R) })),
     ...(e.createdBy ? { createdBy: map[e.createdBy] || null } : {}),
   }));
@@ -152,14 +154,14 @@ async function doMove(tid, target, choice) {
   out.expenses.forEach((e, i) => {
     const o = src.expenses[i];
     const patch = {};
-    for (const k of ['paidBy', 'participants', 'items', 'createdBy']) if (k in e && !same(e[k], o[k])) patch[k] = e[k];
+    for (const k of ['paidBy', 'participants', 'families', 'items', 'createdBy']) if (k in e && !same(e[k], o[k])) patch[k] = e[k];
     if (Object.keys(patch).length) store.updateItem(tid, 'expenses', o.id, patch);
   });
   out.exchanges.forEach((x, i) => {
     if (x.member !== src.exchanges[i].member) store.updateItem(tid, 'exchanges', x.id, { member: x.member });
   });
   const tp = {};
-  for (const k of ['memberIds', 'memberRates', 'cash']) if (k in out.trip && !same(out.trip[k], src.trip[k])) tp[k] = out.trip[k];
+  for (const k of ['memberIds', 'memberRates', 'cash', 'families']) if (k in out.trip && !same(out.trip[k], src.trip[k])) tp[k] = out.trip[k];
   if (Object.keys(tp).length) store.updateTrip(tid, tp);
   if (S.tripId === tid) { S.view = 'ledger'; S.tripId = null; }
   await store.moveTrip(tid, S.ledgerId, target.id);

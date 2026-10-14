@@ -74,7 +74,7 @@ export function exportCsv(tripsData, memberName) {
       const base = [
         d.trip.name, r.date || '', r.title, cats[r.category] || '', r.currency, r.amountPending ? '金額待補' : r.amount,
         r.method === 'card' ? '刷卡' : '現金', r.billedTwd ?? '', r.val.twd != null ? Math.round(r.val.twd) : '',
-        memberName(r.paidBy), r.splitMode === 'items' ? '逐項' : r.splitMode === 'self' ? '個人' : '平分',
+        memberName(r.paidBy), r.splitMode === 'items' ? '逐項' : r.splitMode === 'self' ? '個人' : r.splitMode === 'family' ? '按家庭' : '平分',
         Object.keys(r.fractions).map(memberName).join('、'),
       ];
       if (r.items?.length) {

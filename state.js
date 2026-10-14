@@ -14,6 +14,7 @@ export const S = {
   filter: 'all',
   tripSearch: false, // 旅程內搜尋框是否打開
   tripQ: '',
+  settleView: 'person', // 結算頁：person 個人 | family 家庭（開了家庭分帳才有）
   searchQ: '',
   statsYear: 'all',
   statsMember: 'all',

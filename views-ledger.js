@@ -248,9 +248,9 @@ export function ledgerSettingsTab() {
     </div>
     <div class="card">
       <h3>版本</h3>
-      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.2')}</span></div>
+      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.3')}</span></div>
       <p class="small muted">App 會在背景自動檢查新版，有新版時畫面下方會出現「點此更新」。</p>
       <button class="btn secondary" data-act="check-update">🔄 檢查更新</button>
     </div>
-    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.2</p>`;
+    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.3</p>`;
 }

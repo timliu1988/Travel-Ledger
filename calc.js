@@ -22,15 +22,48 @@
 //   平分   → 勾選的人平均分
 //   逐項分 → 每個品項算給指定的人（指定多人就平分）；沒指定的品項由這趟全部旅伴平分；
 //            收據總額和品項合計的差額（稅、折扣、服務費）依各人品項金額比例分攤
+//   按家庭 → 勾選的家庭平均分（每家一份），家裡再由成員平均分；沒分到家庭的旅伴自己算一家
+//
+// 家庭分帳（每趟旅程可開關，trip.familyMode）：trip.families = [{ id, name, members: [成員id] }]
+//   結算頁可以切換「個人／家庭」，家庭模式下把同一家的應收應付加總，只算家庭之間的轉帳
 
 export const NO_DECIMAL = ['JPY', 'KRW', 'VND', 'IDR', 'TWD', 'CLP', 'ISK', 'HUF'];
 export const decimals = (cur) => (NO_DECIMAL.includes(cur) ? 0 : 2);
 const roundCur = (n, cur) => { const p = 10 ** decimals(cur); return Math.round(n * p) / p; };
 
+/** 這趟的家庭分組：設定好的家庭 ＋ 沒分到家庭的旅伴（自己一組，id 是「m:成員id」） */
+export function tripGroups(trip) {
+  const ids = trip.members ? trip.members.map((m) => m.id) : (trip.memberIds || []);
+  const used = new Set();
+  const out = [];
+  for (const f of trip.families || []) {
+    const ms = (f.members || []).filter((id) => ids.includes(id) && !used.has(id));
+    ms.forEach((id) => used.add(id));
+    if (ms.length) out.push({ id: f.id, name: f.name || '未命名的家庭', members: ms, solo: false });
+  }
+  for (const id of ids) if (!used.has(id)) out.push({ id: 'm:' + id, name: null, members: [id], solo: true });
+  return out;
+}
+
+/** 按家庭分的帳目，現在對應到哪幾組（家庭改過也跟著變；原本自己一組的人後來加入某家，就算那一家） */
+export function chosenGroups(e, groups) {
+  const sel = new Set(e.families || []);
+  return groups.filter((g) => sel.has(g.id) || g.members.some((id) => sel.has('m:' + id)));
+}
+
 /** 回傳 { 成員id: 比例 }，比例總和為 1 */
-export function shareFractions(e, memberIds) {
+export function shareFractions(e, memberIds, groups) {
   const valid = new Set(memberIds);
   if (e.splitMode === 'self' && valid.has(e.paidBy)) return { [e.paidBy]: 1 };
+  if (e.splitMode === 'family') {
+    const gs = chosenGroups(e, groups || memberIds.map((id) => ({ id: 'm:' + id, members: [id] })))
+      .map((g) => g.members.filter((id) => valid.has(id))).filter((ms) => ms.length);
+    if (gs.length) {
+      const out = {};
+      for (const ms of gs) for (const id of ms) out[id] = (out[id] || 0) + 1 / gs.length / ms.length;
+      return out;
+    }
+  }
   const items = (e.items || []).filter((it) => (it.amount || 0) !== 0);
   if (e.splitMode === 'items' && items.length) {
     const sums = {};
@@ -126,6 +159,7 @@ export function calc(data, mode = 'split') {
   const { trip, expenses, exchanges } = data;
   const ids = (trip.members || []).map((m) => m.id);
   const rates = tripRates(trip, exchanges);
+  const groups = tripGroups(trip);
   const per = {};
   for (const id of ids) {
     per[id] = {
@@ -135,7 +169,7 @@ export function calc(data, mode = 'split') {
   }
   const byCur = {};
   let totalTwd = 0, noRate = 0, noTwd = 0, noLocal = 0;
-  const rows = expenses.map((e) => ({ ...e, val: expenseValue(e, trip, rates), fractions: shareFractions(e, ids) }));
+  const rows = expenses.map((e) => ({ ...e, val: expenseValue(e, trip, rates), fractions: shareFractions(e, ids, groups) }));
   for (const r of rows) {
     if (r.amountPending) continue;
     const { cur, amt, twd, local } = r.val;
@@ -191,12 +225,16 @@ export function calc(data, mode = 'split') {
   } else {
     balances[trip.currency] = ids.map((id) => ({ id, v: per[id].paidLocal - per[id].shareLocal }));
   }
-  const settlements = Object.entries(balances).map(([cur, b]) => ({ cur, balances: b, transfers: settle(b, cur) }));
+  const settlements = Object.entries(balances).map(([cur, b]) => {
+    // 家庭：同一家的應收應付加總，只算家庭之間的轉帳
+    const famBalances = groups.map((g) => ({ id: g.id, v: g.members.reduce((a, id) => a + (b.find((x) => x.id === id)?.v || 0), 0) }));
+    return { cur, balances: b, transfers: settle(b, cur), famBalances, famTransfers: settle(famBalances, cur) };
+  });
 
   const isPendingBill = (r) => !r.amountPending && r.currency !== 'TWD' && r.method === 'card' && r.billedTwd == null;
   const isNoAmount = (r) => !!r.amountPending;
   return {
-    rows, per, rates, byCur, curs, totalTwd, noRate, cashCheck,
+    rows, per, rates, byCur, groups, curs, totalTwd, noRate, cashCheck,
     mode: usedMode, requestedMode: mode, convertible, settlements,
     pendingN: rows.filter(isPendingBill).length,
     isPendingBill,

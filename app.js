@@ -1,4 +1,4 @@
-// 旅伴記帳 v5.2 — 主程式：畫面切換、按鈕事件、啟動
+// 旅伴記帳 v5.3 — 主程式：畫面切換、按鈕事件、啟動
 import { createStore, uid, receiptKey } from './store.js';
 import { calc } from './calc.js';
 import { aiReady, aiTranslateNames, aiDiagnose } from './ai.js';
@@ -11,7 +11,7 @@ import { $, $$, esc, flag, num, ls, toast, avatar, closeSheet, closeAllSheets, s
 import { welcomeHTML, tripsTab, searchTab, searchResultsHTML, statsTab, ledgerSettingsTab } from './views-ledger.js';
 import { listTab, tripRowsHTML, settleTab, exchangeTab, tripSettingsTab, previousTripSameCurrency } from './views-trip.js';
 import {
-  nav, needsTranslate, memberUsedInTrip, openTripForm, openMemberForm, openExpenseForm, openExchangeForm,
+  nav, needsTranslate, memberUsedInTrip, openTripForm, openMemberForm, openExpenseForm, openFamilyForm, openExchangeForm,
   openLedgerForm, openJoin, openWhoAmI, openRenameLedger, openRateForm, openCashForm,
 } from './forms.js';
 import { exportLedger, importLedger, exportCsv } from './backup.js';
@@ -479,6 +479,8 @@ document.addEventListener('click', async (ev) => {
       if (S.tripSearch) setTimeout(() => $('#tq')?.focus(), 50);
       break;
     case 'goto-noamount': S.tab = 'list'; S.filter = 'noamount'; render(); window.scrollTo(0, 0); break;
+    case 'settle-view': S.settleView = el.value; render(); break;
+    case 'family-form': closeAllSheets(); openFamilyForm(); break;
     case 'settle-mode': store.updateTrip(S.tripId, { settleMode: el.value }); break;
     // 支出
     case 'add-expense': openExpenseForm(); break;

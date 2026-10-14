@@ -1,6 +1,6 @@
 // 單一旅程的四個頁籤：帳目、結算、換匯、設定
 import { S, getMe, member, memberName, ledgerMembers, allTrips } from './state.js';
-import { calc, decimals } from './calc.js';
+import { calc, decimals, tripGroups } from './calc.js';
 import { norm } from './search.js';
 import { fmtRange, tripDays } from './calendar.js';
 import {
@@ -26,6 +26,21 @@ export function previousTripSameCurrency(trip) {
       && (d.trip.endDate || d.trip.startDate || '') <= (trip.startDate || '9999') && (d.trip.startDate || ''))
     .sort((a, b) => (b.trip.endDate || b.trip.startDate || '').localeCompare(a.trip.endDate || a.trip.startDate || ''))[0] || null;
 }
+
+/** 家庭名稱（自己一家的就用旅伴名字） */
+const groupName = (g) => (g.solo ? memberName(g.members[0]) : g.name);
+const groupIcon = (g, size) => (g.solo ? avatar(member(g.members[0]), size) : `<span class="fam-ic" style="width:${size}px;height:${size}px">🏠</span>`);
+function famBalanceHTML(c, gid) {
+  const parts = c.settlements.map((s) => {
+    const v = s.famBalances.find((b) => b.id === gid)?.v || 0;
+    const eps = decimals(s.cur) ? 0.005 : 0.5;
+    if (v >= eps) return `<span class="pos">應收 ${money(v, s.cur)}</span>`;
+    if (v <= -eps) return `<span class="neg">應付 ${money(-v, s.cur)}</span>`;
+    return '';
+  }).filter(Boolean);
+  return parts.length ? parts.join('<br>') : '已平衡';
+}
+const sumCur = (list) => { const o = {}; for (const x of list) for (const [k, v] of Object.entries(x)) o[k] = (o[k] || 0) + v; return o; };
 
 const SETTLE_LABEL = (cur) => ({ split: '分幣別', twd: '全換台幣', local: `全換${curName(cur)}` });
 
@@ -96,6 +111,7 @@ export function tripRowsHTML(d) {
     let split;
     if (r.splitMode === 'self') split = `${esc(memberName(r.paidBy))} 個人`;
     else if (r.splitMode === 'items') split = '逐項分';
+    else if (r.splitMode === 'family') { const n = (r.families || []).length; split = n ? `${n} 家分` : '按家庭'; }
     else if (ids.length === trip.members.length && ids.length > 1) split = '大家分';
     else if (ids.length === 1) split = `${esc(memberName(ids[0]))}自己`;
     else split = `${ids.length} 人分`;
@@ -157,6 +173,8 @@ export function settleTab(d) {
   const me = getMe();
   const lbl = SETTLE_LABEL(trip.currency);
   const usedCats = CATS.filter((cat) => members.some((m) => c.per[m.id].cats[cat.id]));
+  const famOn = !!trip.familyMode;
+  const view = famOn && S.settleView === 'family' ? 'family' : 'person';
   return `
     <div class="card">
       <h3>結算方式</h3>
@@ -172,14 +190,42 @@ export function settleTab(d) {
     </div>
     ${c.noAmountN ? `<button class="banner" data-act="goto-noamount">⚠️ 有 ${c.noAmountN} 筆「金額待補」還沒算進結算，補上金額後結果會改變 ›</button>` : ''}
     ${c.pendingN ? `<div class="banner">ⓘ 有 ${c.pendingN} 筆刷卡還沒出帳，暫時用外幣計算；補上帳單台幣金額後會改用台幣結算。</div>` : ''}
+    ${famOn ? `<div class="card fam-switch">
+      <div class="seg">${[['person', '👤 個人'], ['family', '🏠 家庭']].map(([k, l]) => `
+        <label class="opt"><input type="radio" name="settleView" value="${k}" data-act="settle-view" ${view === k ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+      <div class="small muted" style="margin-top:8px">${view === 'family'
+        ? `同一家的應收應付合在一起，只算家庭之間的轉帳。${c.groups.filter((g) => !g.solo).map((g) => `🏠 ${esc(g.name)}：${g.members.map((id) => esc(memberName(id))).join('、')}`).join('　')}`
+        : '每個人各自結算。'} · <a href="#" data-act="family-form">編輯家庭</a></div>
+    </div>` : ''}
     <div class="card">
-      <h3>🤝 轉帳建議</h3>
-      ${c.settlements.some((s) => s.transfers.length) ? c.settlements.filter((s) => s.transfers.length).map((s) => `
+      <h3>🤝 轉帳建議${view === 'family' ? '（家庭之間）' : ''}</h3>
+      ${(() => {
+        const key = view === 'family' ? 'famTransfers' : 'transfers';
+        const who = (id) => {
+          if (view !== 'family') return `${avatar(member(id), 24)} ${esc(memberName(id))}`;
+          const g = c.groups.find((x) => x.id === id);
+          return `${groupIcon(g, 24)} ${esc(groupName(g))}`;
+        };
+        return c.settlements.some((s) => s[key].length) ? c.settlements.filter((s) => s[key].length).map((s) => `
         <div class="settle-cur">${flag(s.cur)} ${esc(curName(s.cur))}</div>
-        ${s.transfers.map((t) => `
-          <div class="transfer"><span class="tr-who">${avatar(member(t.from), 24)} ${esc(memberName(t.from))} <span class="muted">→</span> ${avatar(member(t.to), 24)} ${esc(memberName(t.to))}</span><b>${money(t.amount, t.cur)}</b></div>`).join('')}`).join('')
-        : '<div class="muted">目前不需要互相轉帳 🎉</div>'}
+        ${s[key].map((t) => `
+          <div class="transfer"><span class="tr-who">${who(t.from)} <span class="muted">→</span> ${who(t.to)}</span><b>${money(t.amount, t.cur)}</b></div>`).join('')}`).join('')
+        : '<div class="muted">目前不需要互相轉帳 🎉</div>';
+      })()}
     </div>
+    ${view === 'family' ? `<div class="card">
+      <h3>🏠 每一家的狀況</h3>
+      ${c.groups.map((g) => {
+        const ps = g.members.map((id) => c.per[id]).filter(Boolean);
+        const shareTwd = ps.reduce((a, p) => a + p.shareTwd, 0);
+        const share = sumCur(ps.map((p) => p.share));
+        return `<div class="member-row">
+          <span class="name">${groupIcon(g, 26)} ${esc(groupName(g))}</span>
+          <span class="bal">${famBalanceHTML(c, g.id)}</span>
+          <span class="detail">${g.solo ? '' : `成員：${g.members.map((id) => esc(memberName(id))).join('、')}<br>`}這家的花費 ${moneyMulti(share)}${shareTwd && Object.keys(share).some((k) => k !== 'TWD') ? `（≈ ${twd(shareTwd)}）` : ''}<br>實際付出 ${moneyMulti(sumCur(ps.map((p) => p.paid)))}</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
     <div class="card">
       <h3>👥 每個人的狀況</h3>
       ${members.map((m) => {
@@ -276,6 +322,8 @@ export function exchangeTab(d) {
 }
 
 /* ---------- 旅程設定 ---------- */
+const tripGroupsText = (trip) => tripGroups(trip).filter((g) => !g.solo).map((g) => `🏠 ${esc(g.name)}：${g.members.map((id) => esc(memberName(id))).join('、')}`).join('<br>');
+
 export function tripSettingsTab(d) {
   const { trip } = d;
   const inTrip = new Set(trip.memberIds || []);
@@ -295,6 +343,13 @@ export function tripSettingsTab(d) {
       <div class="opts">${ledgerMembers().map((m) => `
         <button class="chip av-chip ${inTrip.has(m.id) ? 'on' : ''}" data-act="toggle-trip-member" data-id="${esc(m.id)}">${avatar(m, 22)} ${esc(m.name)}</button>`).join('')}</div>
       <button class="btn secondary" style="margin-top:12px" data-act="add-member" data-to-trip="1">＋ 新增旅伴</button>
+    </div>
+    <div class="card">
+      <h3>🏠 家庭分帳</h3>
+      <p class="small muted" style="margin-top:-4px">幾家人一起出遊時用：可以按家庭平分，結算時看家庭之間怎麼轉帳。</p>
+      <div class="kv"><span class="k">狀態</span><span class="v">${trip.familyMode ? '已開啟' : '關閉'}</span></div>
+      ${(trip.families || []).length ? `<div class="small muted">${tripGroupsText(trip)}</div>` : ''}
+      <button class="btn secondary" style="margin-top:8px" data-act="family-form">${trip.familyMode ? '編輯家庭分組' : '設定家庭分帳'}</button>
     </div>
     <div class="card">
       <h3>每個人的匯率</h3>

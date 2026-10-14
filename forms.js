@@ -1,7 +1,7 @@
 // 各種輸入表單：旅程、帳本成員、支出、換匯
 import { S, render, tripData, getMe, member, memberName, ledgerMembers, allTrips } from './state.js';
 import { uid, receiptKey } from './store.js';
-import { itemBreakdown, tripRates, expenseValue } from './calc.js';
+import { itemBreakdown, tripRates, expenseValue, tripGroups, chosenGroups } from './calc.js';
 import { loadImage, makeAvatar, compressReceipt } from './media.js';
 import { recognizeReceipts, dictHint } from './ocr.js';
 import { aiReady, aiReadReceipt, modelLabel } from './ai.js';
@@ -123,6 +123,79 @@ export function openTripForm(trip) {
         closeSheet();
         toast('已儲存');
       }
+    });
+  }, { tall: true });
+}
+
+/* ---------- 家庭分帳：開關與分組 ---------- */
+export function openFamilyForm() {
+  const D = tripData();
+  if (!D) return;
+  const { trip } = D;
+  const ids = trip.members.map((m) => m.id);
+  let on = !!trip.familyMode;
+  // 只留這趟還在的旅伴；同一個人只能在一家
+  const seen = new Set();
+  let fams = structuredClone(trip.families || []).map((f) => ({
+    id: f.id, name: f.name || '', members: (f.members || []).filter((id) => ids.includes(id) && !seen.has(id) && seen.add(id)),
+  }));
+  const html = `
+    <div id="fam-form">
+      <label class="switch-row card" style="margin:0 0 12px"><span><b>🏠 家庭分帳</b><small class="muted" style="display:block;font-size:12px;margin-top:2px">打開後，記帳可以「按家庭平分」、一鍵勾選整家，結算頁可以切換成「家庭」看家庭之間怎麼轉帳。關掉不會刪除分組。</small></span>
+        <input type="checkbox" id="fam-on" ${on ? 'checked' : ''}></label>
+      <div class="fam-edit"></div>
+      <button class="btn" type="button" id="fam-save">儲存</button>
+    </div>`;
+  openSheet('家庭分帳', html, (root) => {
+    const draw = () => {
+      const used = new Set(fams.flatMap((f) => f.members));
+      const solo = trip.members.filter((m) => !used.has(m.id));
+      $('.fam-edit', root).innerHTML = `
+        <p class="small muted" style="margin:0 0 8px">點頭像把旅伴放進這一家（同一人只能在一家）。沒分到家庭的人自己算一家。</p>
+        ${fams.map((f, i) => `
+          <div class="card fam-card">
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="fam-name" data-i="${i}" value="${esc(f.name)}" placeholder="家庭名稱，例如：小明家">
+              <button type="button" class="it-del" data-fdel="${i}" aria-label="刪除這一家">✕</button>
+            </div>
+            <div class="it-owners" style="margin-top:8px">${trip.members.map((m) => `
+              <button type="button" class="own ${f.members.includes(m.id) ? 'on' : ''}" data-fi="${i}" data-m="${esc(m.id)}" aria-label="${esc(m.name)}">${avatar(m, 30)}</button>`).join('')}</div>
+            <div class="small muted" style="margin-top:6px">${f.members.length ? f.members.map((id) => esc(memberName(id))).join('、') : '還沒有成員'}</div>
+          </div>`).join('')}
+        <button type="button" class="btn small secondary" id="fam-add">＋ 新增家庭</button>
+        ${solo.length ? `<div class="small muted" style="margin:12px 2px 4px">自己一家：${solo.map((m) => esc(m.name)).join('、')}</div>` : ''}`;
+      $('.fam-edit', root).style.opacity = on ? '' : '.55';
+    };
+    draw();
+    $('#fam-on', root).addEventListener('change', (ev) => { on = ev.target.checked; draw(); });
+    root.addEventListener('input', (ev) => {
+      if (ev.target.classList.contains('fam-name')) fams[ev.target.dataset.i].name = ev.target.value;
+    });
+    root.addEventListener('click', (ev) => {
+      const t = ev.target;
+      if (t.closest('#fam-add')) {
+        fams.push({ id: uid(6), name: '', members: [] });
+        draw();
+        $$('.fam-name', root).at(-1)?.focus();
+        return;
+      }
+      const del = t.closest('[data-fdel]');
+      if (del) { fams.splice(Number(del.dataset.fdel), 1); draw(); return; }
+      const own = t.closest('[data-fi]');
+      if (own) {
+        const i = Number(own.dataset.fi), mid = own.dataset.m;
+        const f = fams[i];
+        if (f.members.includes(mid)) f.members = f.members.filter((x) => x !== mid);
+        else { fams.forEach((g) => { g.members = g.members.filter((x) => x !== mid); }); f.members.push(mid); }
+        draw();
+      }
+    });
+    $('#fam-save', root).addEventListener('click', () => {
+      const clean = fams.filter((f) => f.members.length).map((f, i) => ({ id: f.id, name: f.name.trim() || `第 ${i + 1} 家`, members: f.members }));
+      if (on && !clean.length) { toast('至少要建一個家庭，或把開關關掉'); return; }
+      S.store.updateTrip(trip.id, { familyMode: on, families: clean });
+      closeSheet();
+      toast(on ? '家庭分帳已開啟' : '已儲存（家庭分帳關閉）');
     });
   }, { tall: true });
 }
@@ -313,10 +386,15 @@ export function openExpenseForm(id) {
   const days = tripDays(trip.startDate, trip.endDate);
   const t = today();
   const defDate = days.includes(t) || !days.length ? t : (ls.get('tl_lastDate_' + trip.id) || days[0]);
+  // 怎麼分：新增時沿用這趟上一筆的選擇
+  const fam = !!trip.familyMode;
+  const groups = tripGroups(trip);
+  let lastSplit = ls.get('tl_lastSplit_' + trip.id, 'equal');
+  if (!['self', 'equal', 'items', 'family'].includes(lastSplit) || (lastSplit === 'family' && !fam)) lastSplit = 'equal';
   const v = e || {
     date: defDate, category: '', currency: trip.currency, amount: '',
     method: ls.get('tl_lastMethod', 'cash'), paidBy: ids.includes(getMe()) ? getMe() : ids[0],
-    participants: ids, splitMode: 'equal', items: [], billedTwd: null, title: '', note: '',
+    participants: ids, splitMode: lastSplit, items: [], billedTwd: null, title: '', note: '',
   };
   let items = structuredClone(v.items || []).map(normItem);
   let receipts = []; // [{ url, img }]，長收據可以有好幾段
@@ -357,11 +435,21 @@ export function openExpenseForm(id) {
         <div class="opts">${trip.members.map((m) => radio('paidBy', m.id, avLabel(m), v.paidBy === m.id)).join('')}</div></div>
 
       <div class="field"><div class="label">怎麼分</div>
-        <div class="seg">${radio('splitMode', 'self', '🙋 個人', v.splitMode === 'self')}${radio('splitMode', 'equal', '平分', !v.splitMode || v.splitMode === 'equal')}${radio('splitMode', 'items', '🧾 逐項分', v.splitMode === 'items')}</div>
+        <div class="seg">${radio('splitMode', 'self', '🙋 個人', v.splitMode === 'self')}${radio('splitMode', 'equal', '平分', !v.splitMode || v.splitMode === 'equal')}${fam || v.splitMode === 'family' ? radio('splitMode', 'family', '🏠 按家庭', v.splitMode === 'family') : ''}${radio('splitMode', 'items', '🧾 逐項分', v.splitMode === 'items')}</div>
         <div class="hint split-hint"></div></div>
       <div class="split-equal">
         <div class="field"><div class="label">誰要分攤（平均分）${ids.length > 2 ? ' <button type="button" class="link-btn" id="part-all">全選</button>' : ''}</div>
+          ${fam && groups.some((g) => !g.solo) ? `<div class="fam-quick small muted">一鍵勾選：${groups.filter((g) => !g.solo).map((g) => `<button type="button" class="chip fam-chip" data-fam="${esc(g.id)}">🏠 ${esc(g.name)}</button>`).join(' ')}</div>` : ''}
           <div class="opts">${trip.members.map((m) => check('part', m.id, avLabel(m), (v.participants || ids).includes(m.id))).join('')}</div></div>
+      </div>
+      <div class="split-family">
+        <div class="field"><div class="label">哪幾家要分攤（每家一份，家裡再平分）</div>
+          <div class="opts fam-opts">${(() => {
+            const sel = new Set((v.splitMode === 'family' ? chosenGroups(v, groups) : groups).map((g) => g.id));
+            return groups.map((g) => check('fam', g.id, g.solo ? avLabel(trip.members.find((m) => m.id === g.members[0]))
+              : `🏠 <span class="opt-name">${esc(g.name)}</span><small class="fam-ms">${g.members.map((id) => esc(memberName(id))).join('、')}</small>`, sel.has(g.id))).join('');
+          })()}</div>
+          <div class="hint fam-hint"></div></div>
       </div>
       <div class="items-block field">
         <div class="label items-label"></div>
@@ -681,6 +769,18 @@ export function openExpenseForm(id) {
       });
     }
 
+    // 家庭一鍵勾選：整家都勾了就取消，否則整家勾起來
+    root.addEventListener('click', (ev) => {
+      const chip = ev.target.closest('[data-fam]');
+      if (!chip) return;
+      const g = groups.find((x) => x.id === chip.dataset.fam);
+      if (!g) return;
+      const boxes = $$('input[name=part]', form).filter((b) => g.members.includes(b.value));
+      const allOn = boxes.every((b) => b.checked);
+      boxes.forEach((b) => { b.checked = !allOn; });
+      sync();
+    });
+
     /* --- 表單連動 --- */
     const sync = () => {
       const c = cur();
@@ -691,6 +791,14 @@ export function openExpenseForm(id) {
       const mode = form.splitMode.value;
       const itemsMode = mode === 'items';
       $('.split-equal', root).hidden = mode !== 'equal';
+      $('.split-family', root).hidden = mode !== 'family';
+      if (mode === 'family') {
+        const sel = $$('input[name=fam]:checked', form).map((x) => x.value);
+        const amt0 = num(form.amount.value);
+        $('.fam-hint', root).textContent = sel.length
+          ? `${sel.length} 家各分 1/${sel.length}${amt0 ? `（每家 ${money(amt0 / sel.length, cur())}）` : ''}，家裡再由成員平分。`
+          : '至少要勾一家';
+      }
       $('.split-hint', root).textContent = mode === 'self' ? `這筆是${memberName(payer())}自己的花費，不分給別人。` : '';
       // 品項明細一律可以記（之後才搜尋得到），只有逐項分時才需要指定歸屬
       const blk = $('.items-block', root);
@@ -754,6 +862,9 @@ export function openExpenseForm(id) {
       const participants = $$('input[name=part]:checked', form).map((x) => x.value);
       if (splitMode === 'equal' && !participants.length) { toast('至少要勾一位分攤的人'); return; }
       if (splitMode === 'items' && !cleanItems.length && !amountPending) { toast('逐項分至少要有一個有金額的品項'); return; }
+      const famSel = $$('input[name=fam]:checked', form).map((x) => x.value);
+      if (splitMode === 'family' && !famSel.length) { toast('至少要勾一家分攤'); return; }
+      const famMembers = groups.filter((g) => famSel.includes(g.id)).flatMap((g) => g.members);
       const currency = cur();
       const method = form.method.value;
       const data = {
@@ -762,7 +873,8 @@ export function openExpenseForm(id) {
         currency, amount, amountPending, method,
         paidBy: form.paidBy.value,
         splitMode,
-        participants: splitMode === 'equal' ? participants : splitMode === 'self' ? [form.paidBy.value] : ids,
+        participants: splitMode === 'equal' ? participants : splitMode === 'self' ? [form.paidBy.value] : splitMode === 'family' ? famMembers : ids,
+        families: splitMode === 'family' ? famSel : null,
         items: cleanItems,
         billedTwd: method === 'card' && currency !== 'TWD' ? num(form.billedTwd.value) : null,
         date: form.date.value || (e ? (e.date || null) : today()), // 原本沒日期的（例如從 Excel 匯入）保持空白
@@ -773,6 +885,7 @@ export function openExpenseForm(id) {
       };
       data.translatePending = data.items.some((it) => needsTranslate(it) && it.zhSource !== 'ai' && it.zhSource !== 'user');
       ls.set('tl_lastMethod', method);
+      if (!e) ls.set('tl_lastSplit_' + trip.id, splitMode);
       if (data.date) ls.set('tl_lastDate_' + trip.id, data.date);
       const expId = e ? e.id : S.store.newId();
       try {
