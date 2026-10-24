@@ -574,3 +574,38 @@ header.top .search-btn.on { background: var(--brand-soft); }
 .fam-card .fam-name { flex: 1; }
 .fam-switch .seg { margin: 0; }
 .seg .opt > span { white-space: nowrap; }
+
+/* v5.4 日本外稅：稅抜標籤 */
+.ex-tag { border: 0; background: var(--bg); color: var(--muted); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-family: inherit; }
+.it-line:has(.ex-tag) { display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; }
+.ocr-rerun { margin-top: 8px; }
+.ocr-rerun .btn.on { background: var(--brand-soft); }
+.twd-eq { margin: 6px 2px 0; font-size: 15px; font-variant-numeric: tabular-nums; }
+.twd-eq:empty { display: none; }
+.twd-eq b { font-size: 18px; }
+.twd-eq .muted { font-size: 12px; margin-left: 2px; }
+
+/* v5.4 每日排序 */
+.day { align-items: center; }
+.day-sort { background: none; border: 0; color: var(--brand); font-size: 13px; font-weight: 600; padding: 4px 2px; font-family: inherit; }
+.day-sort.done { background: var(--brand); color: var(--brand-ink, #fff); border-radius: 999px; padding: 4px 14px; }
+.day.dim, .list.dim { opacity: .35; pointer-events: none; }
+.sorting-day [data-sortrow] { position: relative; padding-right: 48px; cursor: default; }
+.drag-h { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 22px; line-height: 1; color: var(--muted); padding: 12px 6px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.sorting-day [data-sortrow].dragging { z-index: 3; background: var(--card); box-shadow: 0 10px 28px rgba(0,0,0,.25); border-radius: 14px; }
+.sorting-day [data-sortrow].dragging .drag-h { color: var(--brand); }
+.list.sorting-day { overflow: visible; }
+
+/* v5.4 點旅伴卡片篩選 */
+.person[data-act] { cursor: pointer; transition: opacity .15s; }
+.person.picked { outline: 3px solid var(--brand); outline-offset: 2px; }
+.person.faded { opacity: .45; }
+.person-chip { display: inline-flex; align-items: center; gap: 6px; }
+.pshare { font-size: 12px; color: var(--brand); margin-top: 2px; white-space: nowrap; }
+
+/* v5.4 更新說明 */
+.wn-list { margin-bottom: 14px; }
+.wn-row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.wn-row:last-child { border-bottom: 0; }
+.wn-ic { font-size: 22px; width: 32px; text-align: center; flex: none; }
+.wn-row p { margin: 3px 0 0; }

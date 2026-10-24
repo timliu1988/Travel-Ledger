@@ -1,10 +1,10 @@
 // 各種輸入表單：旅程、帳本成員、支出、換匯
 import { S, render, tripData, getMe, member, memberName, ledgerMembers, allTrips } from './state.js';
 import { uid, receiptKey } from './store.js';
-import { itemBreakdown, tripRates, expenseValue, tripGroups, chosenGroups } from './calc.js';
+import { itemBreakdown, tripRates, expenseValue, tripGroups, chosenGroups, decimals } from './calc.js';
 import { loadImage, makeAvatar, compressReceipt } from './media.js';
 import { recognizeReceipts, dictHint } from './ocr.js';
-import { aiReady, aiReadReceipt, modelLabel } from './ai.js';
+import { aiReady, aiReadReceipt, modelLabel, MODELS, preferredModel } from './ai.js';
 import { mountRangeCalendar, tripDays } from './calendar.js';
 import {
   CATS, CURRENCIES, AVATAR_EMOJIS, flag, $, $$, esc, twd, money, rateStr, num, today, dayLabel, ls, toast, avatar,
@@ -17,6 +17,32 @@ export function normItem(it) {
   const qty = it.qty > 0 ? it.qty : 1;
   const price = it.price != null ? it.price : (it.amount != null ? round2(it.amount / qty) : null);
   return { ...it, qty, price, amount: it.amount != null ? it.amount : (price != null ? round2(price * qty) : null) };
+}
+
+/**
+ * 日本外稅收據：依稅率分組換算成含稅價。每組四捨五入後加起來剛好等於「該稅率的稅抜小計＋稅額」，
+ * 換算後的合計要等於收據總額，對不上就不換（維持原樣，稅金留在「與總額差額」）。
+ * 回傳新的品項陣列（含 priceEx 稅抜單價、taxRate 稅率），不能換算時回傳 null。
+ */
+export function toTaxIncluded(r, items) {
+  if (r.taxMode !== 'excluded' || !r.taxes || !items.length || !items.every((it) => it.taxRate)) return null;
+  const p = 10 ** decimals(r.currency || 'JPY');
+  const out = items.map((it) => ({ ...it, priceEx: round2(it.amount / (it.qty || 1)), amountEx: it.amount }));
+  for (const rate of [...new Set(out.map((it) => it.taxRate))]) {
+    const g = out.filter((it) => it.taxRate === rate);
+    const ex = g.reduce((a, it) => a + it.amountEx, 0);
+    const tax = r.taxes[rate] ?? r.taxes[String(rate)];
+    if (tax == null || !ex) return null;
+    const target = Math.round((ex + tax) * p);
+    const raw = g.map((it) => it.amountEx * target / ex);
+    const fl = raw.map(Math.floor);
+    let left = target - fl.reduce((a, b) => a + b, 0);
+    raw.map((v, i) => [v - fl[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left > 0) { fl[i]++; left--; } });
+    g.forEach((it, i) => { it.amount = fl[i] / p; });
+  }
+  const sum = out.reduce((a, it) => a + it.amount, 0);
+  if (r.total && Math.abs(sum - r.total) > 0.5 / p * 2) return null;
+  return out.map(({ amountEx, ...it }) => it);
 }
 
 /** 品名是外文（日韓泰英等）才需要翻譯 */
@@ -422,6 +448,7 @@ export function openExpenseForm(id) {
         <div class="seg">${curOpts.map((c) => radio('currency', c, `${flag(c)} ${c === 'TWD' ? '台幣' : c}`, v.currency === c)).join('')}</div></div>
       <div class="field"><label for="f-amount">金額</label>
         <div class="amount-input"><span class="flag-in"></span><input id="f-amount" name="amount" inputmode="decimal" value="${v.amountPending ? '' : (v.amount ?? '')}" placeholder="${v.amountPending ? '金額待補' : '0'}"><span class="unit"></span></div>
+        <div class="twd-eq"></div>
         <div class="hint">還不知道金額？可以先留空儲存成「金額待補」，之後再補。</div></div>
       <div class="field"><label for="f-title">項目</label><input id="f-title" name="title" value="${esc(v.title)}" placeholder="例如：松本清藥妝"></div>
       <div class="field"><div class="label">分類 <span class="cat-hint small muted"></span></div>
@@ -467,7 +494,6 @@ export function openExpenseForm(id) {
         ${days.length ? `<div class="day-chips">${days.map((d, i) => `<button type="button" class="chip day-chip" data-day="${d}"><b>D${i + 1}</b> ${dayLabel(d)}</button>`).join('')}</div>` : ''}
         <input type="date" name="date" value="${esc(v.date)}" style="margin-top:8px"></div>
       <div class="field"><label for="f-note">備註</label><input id="f-note" name="note" value="${esc(v.note)}"></div>
-      <p class="small muted conv-preview"></p>
       <button class="btn" type="submit">${e ? '儲存修改' : '新增'}</button>
       ${e ? `<button class="btn danger" type="button" data-act="delete-expense" data-id="${esc(e.id)}">刪除這筆</button>` : ''}
     </form>`;
@@ -488,7 +514,7 @@ export function openExpenseForm(id) {
             <input class="it-amt" data-i="${i}" inputmode="decimal" value="${it.price ?? ''}" placeholder="單價" enterkeyhint="next" aria-label="單價">
             <button type="button" class="it-del" data-del="${i}" aria-label="刪除品項">✕</button>
           </div>
-          <div class="it-line small muted" data-line="${i}">${it.qty > 1 && it.price != null ? `${fmtQty(it.qty)} × ${money(it.price, cur())} ＝ ${money(it.amount, cur())}` : ''}</div>
+          <div class="it-line small muted" data-line="${i}">${lineHTML(it, i)}</div>
           <div class="it-zh-row"><span class="it-zh-ic">中</span><input class="it-zh" data-i="${i}" value="${esc(it.nameZh || '')}"
             placeholder="${needsTranslate(it) ? '連上網路後會自動翻譯' : '中文名稱（選填）'}"></div>
           <div class="it-owners">${ownerBtns(it, i)}</div>
@@ -503,12 +529,18 @@ export function openExpenseForm(id) {
     };
     const payer = () => form.paidBy.value;
     const newItem = (name = '', amount = null, owners) => ({ name, nameZh: '', qty: 1, price: amount, amount, owners: owners || (payer() ? [payer()] : []) });
+    // 品項下方那一行：日本外稅收據換算過的，左邊標「稅抜 298・8% 軽減」（點一下切換稅率）；右邊是數量 × 單價
+    const lineHTML = (it, i) => {
+      const qtyTxt = it.qty > 1 && it.price != null ? `${fmtQty(it.qty)} × ${money(it.price, cur())} ＝ ${money(it.amount, cur())}` : '';
+      if (it.priceEx == null || !it.taxRate) return qtyTxt;
+      return `<button type="button" class="ex-tag" data-tax="${i}">稅抜 ${money(it.priceEx, cur())}・${it.taxRate}%${it.taxRate === 8 ? ' 軽減' : ''}</button><span>${qtyTxt}</span>`;
+    };
     const fmtQty = (q) => (Number.isInteger(q) ? String(q) : String(round2(q)));
     const recalc = (i) => {
       const it = items[i];
       it.amount = it.price != null ? round2(it.price * (it.qty || 1)) : null;
       const line = $(`[data-line="${i}"]`, root);
-      if (line) line.textContent = it.qty > 1 && it.price != null ? `${fmtQty(it.qty)} × ${money(it.price, cur())} ＝ ${money(it.amount, cur())}` : '';
+      if (line) line.innerHTML = lineHTML(it, i);
       drawSum();
     };
     const addRow = () => {
@@ -535,7 +567,7 @@ export function openExpenseForm(id) {
       $('.items-sum', root).innerHTML = items.length ? `
         ${!itemsMode ? '' : trip.members.map((m) => `<div class="kv"><span class="k h-av">${avatar(m, 22)} ${esc(m.name)}</span><span class="v"><b>${money(b.per[m.id], c)}</b></span></div>`).join('')}
         <div class="kv small"><span class="k">品項合計</span><span class="v">${money(b.itemSum, c)}</span></div>
-        ${total && Math.abs(b.diff) >= 0.005 ? `<div class="kv small"><span class="k">與總額差額（稅/折扣）</span><span class="v">${money(b.diff, c)}・依比例分攤</span></div>` : ''}
+        ${total && Math.abs(b.diff) >= 0.005 ? `<div class="kv small"><span class="k">與總額差額（稅/折扣）</span><span class="v">${money(b.diff, c)}${itemsMode ? '・依比例分攤' : ''}</span></div>` : ''}
         ${itemsMode && b.unassigned ? `<div class="kv small"><span class="k">未指定（大家平分）</span><span class="v">${money(b.unassigned, c)}</span></div>` : ''}
         ${!total && itemsMode ? `<button type="button" class="btn small secondary" data-act="use-item-sum">用品項合計 ${money(b.itemSum, c)} 當總額</button>` : ''}` : '';
     };
@@ -548,6 +580,18 @@ export function openExpenseForm(id) {
       if (ev.target.classList.contains('it-qty')) { const q = num(ev.target.value); items[i].qty = q > 0 ? q : 1; recalc(i); }
     });
     root.addEventListener('click', (ev) => {
+      const tx = ev.target.closest('[data-tax]');
+      if (tx) {
+        // 稅率讀錯時切換 8% ↔ 10%，含稅單價跟著重算
+        const i = Number(tx.dataset.tax), it = items[i];
+        it.taxRate = it.taxRate === 8 ? 10 : 8;
+        const p = decimals(cur()) ? 100 : 1;
+        it.price = Math.round(it.priceEx * (1 + it.taxRate / 100) * p) / p;
+        const inp = $$('.it-amt', root)[i];
+        if (inp) inp.value = it.price;
+        recalc(i);
+        return;
+      }
       const own = ev.target.closest('[data-own]');
       if (own) {
         const it = items[own.dataset.own];
@@ -655,7 +699,8 @@ export function openExpenseForm(id) {
 
     /* --- 辨識：有網路用 Gemini，沒有就用手機辨識 --- */
     let ocrBusy = false;
-    async function runOcr() {
+    let lastOcr = null; // 上一次辨識帶入的內容（換模型重跑時，沒改過的欄位就換成新結果）
+    async function runOcr(pick) {
       if (ocrBusy || !receipts.length) return;
       ocrBusy = true;
       $('.run-ocr-btn', root).classList.remove('pulse');
@@ -670,10 +715,10 @@ export function openExpenseForm(id) {
       };
       let r = null, notice = '', noticeDetail = '';
       try {
-        if (ls.get('tl_ocrEngine', 'auto') === 'auto' && aiReady()) {
-          st.innerHTML = `<span>Gemini 辨識與翻譯中${receipts.length > 1 ? `（${receipts.length} 段合併）` : ''}…</span><span class="bar indet"><i></i></span>`;
+        if ((pick || ls.get('tl_ocrEngine', 'auto') === 'auto') && aiReady()) {
+          st.innerHTML = `<span>Gemini${pick ? ` ${esc(modelLabel(pick))}` : ''} 辨識與翻譯中${receipts.length > 1 ? `（${receipts.length} 段合併）` : ''}…</span><span class="bar indet"><i></i></span>`;
           try {
-            r = await aiReadReceipt(receipts.map((x) => x.url), trip.currency);
+            r = await aiReadReceipt(receipts.map((x) => x.url), trip.currency, pick);
             r.items = r.items.map((it) => ({ ...it, zhSource: 'ai' }));
           } catch (err) {
             console.warn(err);
@@ -708,19 +753,25 @@ export function openExpenseForm(id) {
     function showOcrResult(r) {
       const box = $('.ocr-result', root);
       box.hidden = false;
-      const amountWasEmpty = !num(form.amount.value);
+      const prev = lastOcr;
+      const itemSig = () => JSON.stringify(items.map((it) => [it.name, it.nameZh, it.qty, it.price, it.amount]));
+      // 重跑時：欄位還是上一次辨識帶入的值（沒手動改過）就換成新結果
+      const amountWasEmpty = !num(form.amount.value) || (prev && num(form.amount.value) === prev.total);
       if (amountWasEmpty && r.currency && curOpts.includes(r.currency) && r.currency !== cur()) {
         $(`input[name=currency][value="${r.currency}"]`, form).checked = true;
       }
       const c = cur();
-      const goodItems = r.items.filter((it) => it.amount);
-      const hadItems = items.some((it) => it.name || it.amount);
+      let goodItems = r.items.filter((it) => it.amount);
+      const taxed = toTaxIncluded(r, goodItems);
+      if (taxed) goodItems = taxed;
+      let hadItems = items.some((it) => it.name || it.amount) && !(prev && itemSig() === prev.sig);
+      if (hadItems && prev && goodItems.length && confirm('品項已經手動改過，要換成這次的辨識結果嗎？\n（按「取消」保留目前的品項）')) hadItems = false;
       if (r.total && amountWasEmpty) form.amount.value = r.total;
       // 日期：新增時一律用收據日期；編輯時只有原本沒日期才補上，有日期但不同就給按鈕
       const outOfTrip = !!(r.date && days.length && !days.includes(r.date));
       let dateFilled = false, dateBtn = false;
       if (r.date) {
-        if (!e || !form.date.value) { form.date.value = r.date; drawDays(); dateFilled = true; }
+        if (!e || !form.date.value || (prev && form.date.value === prev.date)) { form.date.value = r.date; drawDays(); dateFilled = true; }
         else if (form.date.value !== r.date) dateBtn = true;
       }
       if (!categoryTouched && r.category) $(`input[name=category][value="${r.category}"]`, form).checked = true;
@@ -728,7 +779,7 @@ export function openExpenseForm(id) {
       const storeName = (r.storeZh || r.store || '').trim();
       let storeBtn = false;
       if (storeName) {
-        if (!form.title.value.trim()) form.title.value = storeName;
+        if (!form.title.value.trim() || (prev && form.title.value.trim() === prev.storeName)) form.title.value = storeName;
         else if (form.title.value.trim() !== storeName) storeBtn = true;
       }
       sync();
@@ -737,6 +788,7 @@ export function openExpenseForm(id) {
       box.innerHTML = `
         <div class="ocr-head">🔍 辨識結果 <span class="tag ${r.engine === 'gemini' ? '' : 'warn'}">${r.engine === 'gemini' ? `Gemini${r.model ? ' ' + esc(modelLabel(r.model)) : ''}` : '手機辨識'}</span>
           <span class="muted small">請核對金額</span></div>
+        ${r.engine === 'gemini' && r.skipped ? `<div class="small muted" style="margin:-4px 0 6px">（${esc(r.skipped)}，已自動改用 ${esc(modelLabel(r.model))}）</div>` : ''}
         ${storeName ? `<div class="kv"><span class="k">店家</span><span class="v">${esc(storeName)}${r.storeZh && r.store && r.storeZh !== r.store ? `<small class="muted">（${esc(r.store)}）</small>` : ''}${storeBtn ? ' <button type="button" class="btn small secondary" data-ocr-store>用這個店名</button>' : ''}</span></div>` : ''}
         <div class="kv"><span class="k">總額</span><span class="v">${r.total ? `<b>${money(r.total, c)}</b> <button type="button" class="btn small secondary" data-ocr-total>填入</button>` : '沒找到'}</span></div>
         ${r.date ? `<div class="kv"><span class="k">日期</span><span class="v">${outOfTrip ? esc(r.date.replace(/-/g, '/')) : dayLabel(r.date)}${dateFilled ? ' <span class="tag">已填入</span>' : ''}${dateBtn ? ' <button type="button" class="btn small secondary" data-ocr-date>用這個日期</button>' : ''}</span></div>
@@ -746,18 +798,35 @@ export function openExpenseForm(id) {
             ${hadItems ? `<button type="button" class="btn small secondary" data-ocr-items>用辨識結果取代品項</button>` : '<span class="small muted">品項已帶入下方明細 ✓</span>'}
             <button type="button" class="btn small" data-ocr-split>🧾 改成逐項分帳</button>
           </div>` : '<div class="kv"><span class="k">品項</span><span class="v">沒找到</span></div>'}
+        ${taxed ? `<div class="small muted" style="margin-top:6px">🧮 已依稅率換算成含稅價（${Object.entries(r.taxes).map(([k, v]) => `${k}% 稅 ${money(v, c)}`).join('、')}）</div>` : ''}
         ${r.engine === 'local' && goodItems.some(needsTranslate) ? '<div class="small muted" style="margin-top:6px">品名會在連上網路後自動翻譯成中文。</div>' : ''}
+        ${aiReady() ? `<div class="ocr-rerun"><button type="button" class="btn small secondary" data-ocr-rerun>🔄 換模型辨識</button><div class="rerun-pick" hidden></div></div>` : ''}
         <details><summary class="small muted">看辨識出的原始內容</summary><pre class="ocr-text">${esc(r.text)}</pre></details>`;
+      box.querySelector('[data-ocr-rerun]')?.addEventListener('click', (ev) => {
+        const pk = box.querySelector('.rerun-pick');
+        const cur0 = r.engine === 'gemini' ? r.model : '';
+        const pref = preferredModel();
+        const ids = [...MODELS.map((x) => x.id), ...(pref !== 'auto' && !MODELS.some((x) => x.id === pref) ? [pref] : [])];
+        pk.innerHTML = `<div class="small muted" style="margin:8px 0 6px">用同一組照片重新辨識，選一個模型：</div>
+          <div class="opts">${ids.map((id) => `<button type="button" class="chip ${id === cur0 ? 'on' : ''}" data-rerun="${esc(id)}">${esc(modelLabel(id))}${id === cur0 ? '（這次）' : ''}</button>`).join('')}</div>`;
+        pk.hidden = !pk.hidden;
+        ev.currentTarget.classList.toggle('on', !pk.hidden);
+      });
+      box.querySelector('.rerun-pick')?.addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-rerun]');
+        if (b) runOcr(b.dataset.rerun);
+      });
       box.querySelector('[data-ocr-total]')?.addEventListener('click', () => { form.amount.value = r.total; sync(); });
       box.querySelector('[data-ocr-store]')?.addEventListener('click', (ev) => { form.title.value = storeName; ev.target.remove(); toast('已換成收據上的店名'); });
       box.querySelector('[data-ocr-date]')?.addEventListener('click', (ev) => { form.date.value = r.date; drawDays(); ev.target.remove(); toast('已換成收據上的日期'); });
       const takeItems = () => {
-        items = goodItems.map((it) => normItem({ name: it.name, nameZh: it.nameZh || '', zhSource: it.zhSource || '', qty: it.qty > 0 ? it.qty : 1, amount: it.amount, owners: payer() ? [payer()] : [] }));
+        items = goodItems.map((it) => normItem({ name: it.name, nameZh: it.nameZh || '', zhSource: it.zhSource || '', qty: it.qty > 0 ? it.qty : 1, amount: it.amount, ...(it.priceEx != null ? { priceEx: it.priceEx, taxRate: it.taxRate } : {}), owners: payer() ? [payer()] : [] }));
         drawItems();
         sync();
       };
       if (!hadItems && goodItems.length) takeItems();
-      box.querySelector('[data-ocr-items]')?.addEventListener('click', takeItems);
+      box.querySelector('[data-ocr-items]')?.addEventListener('click', () => { takeItems(); lastOcr.sig = itemSig(); });
+      lastOcr = { total: num(form.amount.value), storeName: form.title.value.trim(), date: form.date.value, sig: itemSig() };
       const splitBtn = box.querySelector('[data-ocr-split]');
       if (splitBtn) splitBtn.hidden = form.splitMode.value === 'items';
       splitBtn?.addEventListener('click', () => {
@@ -808,15 +877,14 @@ export function openExpenseForm(id) {
       $('.items-hint', root).hidden = !itemsMode;
       drawSum();
       const amt = num(form.amount.value);
-      const prev = $('.conv-preview', root);
-      if (!amt || c === 'TWD') { prev.textContent = ''; return; }
+      // 金額下方：約合台幣（參考用，結算照原本的規則）
+      const eqBox = $('.twd-eq', root);
       const billed = num(form.billedTwd.value);
-      if (card && billed != null) { prev.textContent = `實際出帳 ${twd(billed)}（匯率約 ${rateStr(billed / amt)}），結算時算台幣`; return; }
       const rates = tripRates(trip, D.exchanges);
       const r = c === trip.currency ? (card ? rates.cardRate : rates.rateOf(payer())) : null;
-      prev.textContent = card
-        ? `刷卡先用${c}記，帳單出來後補台幣金額${r ? `（預估約 ${twd(amt * r)}）` : ''}`
-        : `現金用${c}結算${r ? `（約合 ${twd(amt * r)}，用${memberName(payer())}的匯率 ${rateStr(r)}）` : ''}`;
+      eqBox.innerHTML = !amt || c === 'TWD' ? ''
+        : card && billed != null ? `＝ <b>${twd(billed)}</b> <span class="muted">已出帳 · 匯率 ${rateStr(billed / amt)}</span>`
+          : r ? `≈ <b>${twd(amt * r)}</b> <span class="muted">${card ? '待出帳 · 預估匯率' : `${esc(memberName(payer()))}的匯率`} ${rateStr(r)}</span>` : '';
     };
     form.addEventListener('input', (ev) => { if (!ev.target.dataset.i) sync(); if (ev.target.name === 'date') drawDays(); });
     form.addEventListener('change', (ev) => {
@@ -845,6 +913,7 @@ export function openExpenseForm(id) {
         .map((it) => ({
           name: (it.name || '').trim(), nameZh: (it.nameZh || '').trim(), zhSource: it.zhSource || '',
           qty: it.qty > 0 ? it.qty : 1, price: num(it.price), amount: num(it.amount), owners: (it.owners || []).filter((o) => ids.includes(o)),
+          ...(it.priceEx != null && it.taxRate ? { priceEx: it.priceEx, taxRate: it.taxRate } : {}),
         }))
         .filter((it) => it.amount);
       let amount = num(form.amount.value);
@@ -897,6 +966,7 @@ export function openExpenseForm(id) {
         console.error(err);
         toast('收據照片儲存失敗：' + (err?.message || err));
       }
+      if (e && (e.date || null) !== (data.date || null)) data.sortKey = Date.now(); // 改到別天：放到那一天的最上面
       if (e) S.store.updateItem(S.tripId, 'expenses', e.id, data);
       else S.store.addItem(S.tripId, 'expenses', { ...data, createdAt: Date.now(), createdBy: getMe() }, expId);
       closeSheet();

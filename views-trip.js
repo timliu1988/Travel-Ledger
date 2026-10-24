@@ -63,7 +63,7 @@ function peopleSummary(d, c) {
     <div class="people ${trip.members.length > 4 ? 'compact' : ''}">
       ${trip.members.map((m) => {
         const p = c.per[m.id];
-        return `<div class="person ${m.id === me ? 'me' : ''}">
+        return `<div class="person ${m.id === me ? 'me' : ''} ${S.personF === m.id ? 'picked' : S.personF ? 'faded' : ''}" data-act="person-filter" data-id="${esc(m.id)}">
           <div class="p-head">${avatar(m, 28)}<span class="p-name">${esc(m.name)}</span></div>
           <div class="p-total">${moneyLines(p.share)}</div>
           ${Object.keys(p.share).some((k) => k !== 'TWD') && p.shareTwd ? `<div class="p-sub">≈ ${twd(p.shareTwd)}${p.shareNoRate ? ' 起' : ''}</div>` : ''}
@@ -97,7 +97,11 @@ export function tripRowsHTML(d) {
   if (S.filter === 'noamount') rows = rows.filter(c.isNoAmount);
   const q = S.tripSearch ? S.tripQ.trim() : '';
   if (q) rows = rows.filter((r) => tripSearchMatch(r, q));
-  rows = [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0));
+  // 點旅伴卡片：只看這個人有份的帳（個人、平分有勾他、逐項分有他的品項、按家庭有他那一家）
+  const pf = S.personF && trip.members.some((m) => m.id === S.personF) ? S.personF : null;
+  if (pf) rows = rows.filter((r) => (r.fractions[pf] || 0) > 1e-9);
+  // 同一天：晚的在上（可以用「⇅ 排序」拖曳調整，存在 sortKey；沒調過的照新增時間）
+  rows = [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.sortKey ?? b.createdAt ?? 0) - (a.sortKey ?? a.createdAt ?? 0));
   const groups = [];
   for (const r of rows) {
     const g = groups[groups.length - 1];
@@ -128,7 +132,7 @@ export function tripRowsHTML(d) {
         <span class="mid"><div class="t">${esc(r.title || cat.name)}</div>
           <div class="s">${r.method === 'card' ? '💳' : '💵'} ${esc(memberName(r.paidBy))}付 · ${split}</div>
           ${names.length ? `<div class="s s2">${esc(names.slice(0, 4).join('、'))}${names.length > 4 ? `…等 ${names.length} 項` : ''}${r.translatePending ? ' <span class="tag warn">待翻譯</span>' : ''}</div>` : ''}</span>
-        <span class="amt"><div class="f"><span class="fl">${flag(r.currency)}</span>${r.amountPending ? '<span class="muted">—</span>' : money(r.amount, r.currency)}</div><div class="tw">${sub}</div></span>
+        <span class="amt"><div class="f"><span class="fl">${flag(r.currency)}</span>${r.amountPending ? '<span class="muted">—</span>' : money(r.amount, r.currency)}</div><div class="tw">${sub}</div>${pf && !r.amountPending && (r.fractions[pf] || 0) < 0.9999 ? `<div class="pshare">${esc(memberName(pf))} 份 <b>${money(r.val.amt * r.fractions[pf], r.val.cur)}</b></div>` : ''}</span>
       </button>`;
     if (S.filter === 'pending') {
       html += `<div class="bill"><input inputmode="decimal" placeholder="帳單台幣金額" data-bill="${esc(r.id)}" aria-label="台幣出帳金額">
@@ -140,11 +144,20 @@ export function tripRowsHTML(d) {
     : S.filter === 'pending' ? '刷卡帳目都已補上台幣金額 👍' : S.filter === 'noamount' ? '金額都補齊了 👍' : '還沒有帳目，按右下角 ＋ 新增第一筆';
   return `${q ? `<div class="small muted" style="margin:4px 2px 8px">找到 ${rows.length} 筆</div>` : ''}
     ${groups.length ? groups.map((g) => {
-      const dayCur = {};
-      g.items.forEach((r) => { dayCur[r.val.cur] = (dayCur[r.val.cur] || 0) + r.val.amt; });
       const di = days.indexOf(g.date);
-      return `<div class="day"><span>${g.date ? dayLabel(g.date) : '未填日期'}${di >= 0 ? ` · Day ${di + 1}` : ''}</span><span class="num">${Object.values(dayCur).some((v) => Math.abs(v) >= 0.005) ? moneyMulti(dayCur, false) : ''}</span></div>
-        <div class="list">${g.items.map(itemHTML).join('')}</div>`;
+      const key = g.date || '__none';
+      const on = S.sortDay === key, dim = S.sortDay && !on;
+      // 排序中：這一天每筆右邊出現 ☰（按住拖曳），點帳目不會打開編輯；其他天變淡
+      const rowsH = g.items.map((r) => {
+        const h = itemHTML(r);
+        if (!on) return h;
+        const k = h.lastIndexOf('</button>');
+        return h.slice(0, k).replace('data-act="edit-expense"', 'data-sortrow') + '<span class="drag-h" aria-label="按住拖曳">☰</span>' + h.slice(k);
+      }).join('');
+      const canSort = !S.sortDay && !pf && !q && S.filter === 'all' && g.items.length > 1;
+      return `<div class="day ${dim ? 'dim' : ''}"><span>${g.date ? dayLabel(g.date) : '未填日期'}${di >= 0 ? ` · Day ${di + 1}` : ''}</span>
+        ${on ? `<button class="day-sort done" data-act="sort-done">完成</button>` : canSort ? `<button class="day-sort" data-act="sort-day" data-day="${esc(key)}">⇅ 排序</button>` : ''}</div>
+        <div class="list ${on ? 'sorting-day' : ''} ${dim ? 'dim' : ''}">${rowsH}</div>`;
     }).join('') : `<div class="list"><div class="empty">${empty}</div></div>`}`;
 }
 
@@ -152,12 +165,20 @@ export function listTab(d) {
   const { trip } = d;
   const c = calc(d, trip.settleMode || 'split');
   const searching = S.tripSearch;
+  if (S.personF && !trip.members.some((m) => m.id === S.personF)) S.personF = null;
+  if (S.personF) {
+    // 選了某位旅伴：上方提示和篩選數字只算跟他有關的
+    const mine = (r) => (r.fractions[S.personF] || 0) > 1e-9;
+    c.pendingN = c.rows.filter((r) => c.isPendingBill(r) && mine(r)).length;
+    c.noAmountN = c.rows.filter((r) => c.isNoAmount(r) && mine(r)).length;
+  }
   return `
     ${searching ? `<div class="search-box trip-search"><input type="search" id="tq" value="${esc(S.tripQ)}" placeholder="搜尋這一趟：店名、品項、備註、金額" autocomplete="off" enterkeyhint="search"></div>` : ''}
     ${searching && S.tripQ.trim() ? '' : peopleSummary(d, c)}
     ${!searching && c.noAmountN && S.filter !== 'noamount' ? `<button class="banner" data-act="filter" data-filter="noamount">✏️ 有 ${c.noAmountN} 筆還沒填金額，補上後才會算進結算 ›</button>` : ''}
     ${!searching && c.pendingN && S.filter !== 'pending' ? `<button class="banner" data-act="filter" data-filter="pending">💳 有 ${c.pendingN} 筆刷卡還沒補台幣出帳金額 ›</button>` : ''}
     <div class="chips">
+      ${S.personF ? `<button class="chip on person-chip" data-act="person-filter" data-id="${esc(S.personF)}">${avatar(member(S.personF), 20)} ${esc(memberName(S.personF))} ✕</button>` : ''}
       <button class="chip ${S.filter === 'all' ? 'on' : ''}" data-act="filter" data-filter="all">全部</button>
       <button class="chip ${S.filter === 'pending' ? 'on' : ''}" data-act="filter" data-filter="pending">待補出帳 ${c.pendingN ? `(${c.pendingN})` : ''}</button>
       ${c.noAmountN || S.filter === 'noamount' ? `<button class="chip ${S.filter === 'noamount' ? 'on' : ''}" data-act="filter" data-filter="noamount">金額待補 ${c.noAmountN ? `(${c.noAmountN})` : ''}</button>` : ''}

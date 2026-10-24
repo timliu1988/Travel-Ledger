@@ -8,12 +8,12 @@
 //
 // ⚠️ 檔名不要用底線「_」開頭：GitHub Pages 會把這種檔案藏起來，手機就下載不到。
 // ⚠️ 之後改了任何檔案再上傳 GitHub 時，記得把下面的 BUILD 改成新的（例如改日期），手機才會發現有新版。
-const BUILD = 'v5.3-2026.10.14';
+const BUILD = 'v5.4-2026.10.25';
 const CACHE = 'tl-' + BUILD;
 const LIB_CACHE = 'tl-lib'; // 外部程式庫另外存，App 更新版本時不用重新下載
 const SHELL = [
   './', './index.html', './style.css', './app.js', './store.js', './firebase-config.js',
-  './calc.js', './media.js', './ocr.js', './calendar.js', './ai.js', './update.js', './move.js', './theme.js', './icons.js',
+  './calc.js', './media.js', './ocr.js', './calendar.js', './ai.js', './update.js', './move.js', './whatsnew.js', './theme.js', './icons.js',
   './ui.js', './state.js', './forms.js', './views-trip.js', './views-ledger.js', './search.js', './backup.js',
   ...['common', 'journal-dark', 'journal', 'midnight-light', 'midnight', 'mist-dark', 'mist', 'outline-dark', 'outline', 'pop-dark-navy', 'pop-dark', 'pop'].map((n) => `./themes/${n}.css`),
   './manifest.webmanifest', './icons/icon-192.png', './icons/apple-touch-icon.png',

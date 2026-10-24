@@ -4,6 +4,7 @@ import { calc, ledgerStats } from './calc.js';
 import { searchAll } from './search.js';
 import { appBuild } from './update.js';
 import { THEMES, MODES, getTheme, getMode } from './theme.js';
+import { MODELS, preferredModel, modelLabel } from './ai.js';
 import { fmtRange, ymd } from './calendar.js';
 import {
   CATS, catOf, flag, countryName, esc, fmt, twd, money, moneyMulti, rateStr, dayLabel, avatar, ls,
@@ -213,6 +214,18 @@ export function ledgerSettingsTab() {
         <label class="opt"><input type="radio" name="ocrEngine" value="auto" data-act="ocr-engine" ${ls.get('tl_ocrEngine', 'auto') === 'auto' ? 'checked' : ''}><span>Gemini 優先</span></label>
         <label class="opt"><input type="radio" name="ocrEngine" value="local" data-act="ocr-engine" ${ls.get('tl_ocrEngine', 'auto') === 'local' ? 'checked' : ''}><span>只用手機辨識</span></label>
       </div>
+      ${S.store.mode === 'firebase' ? (() => {
+        const pick = preferredModel();
+        const custom = pick !== 'auto' && !MODELS.some((x) => x.id === pick);
+        return `<div class="field" style="margin-bottom:10px"><label for="ai-model">辨識用的模型</label>
+          <select id="ai-model" data-act="ai-model">
+            <option value="auto" ${pick === 'auto' ? 'selected' : ''}>自動（建議）：${esc(modelLabel(MODELS[0].id))} 優先</option>
+            ${MODELS.map((x) => `<option value="${esc(x.id)}" ${pick === x.id ? 'selected' : ''}>${esc(modelLabel(x.id))}・${esc(x.note)}</option>`).join('')}
+            <option value="__custom" ${custom ? 'selected' : ''}>自訂模型名稱…</option>
+          </select>
+          <input id="ai-custom" placeholder="例如 gemini-4.5-flash" value="${custom ? esc(pick) : ''}" autocapitalize="off" autocorrect="off" spellcheck="false" style="margin-top:8px" ${custom ? '' : 'hidden'}>
+          <div class="hint">指定的模型失敗、太忙或額度用完時，會自動換下一個。改完可以按下面的「測試 Gemini 連線」確認。</div></div>`;
+      })() : ''}
       <label class="switch-row"><span>拍完第一張自動辨識</span>
         <input type="checkbox" data-act="toggle-autoocr" ${ls.get('tl_autoOcr', true) ? 'checked' : ''}></label>
       <label class="switch-row" style="margin-top:8px"><span>保存收據照片<small class="muted" style="display:block;font-size:12px">關閉後，照片只用來辨識，存檔時不留下（比較省空間）</small></span>
@@ -248,9 +261,10 @@ export function ledgerSettingsTab() {
     </div>
     <div class="card">
       <h3>版本</h3>
-      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.3')}</span></div>
+      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.4')}</span></div>
       <p class="small muted">App 會在背景自動檢查新版，有新版時畫面下方會出現「點此更新」。</p>
       <button class="btn secondary" data-act="check-update">🔄 檢查更新</button>
+      <button class="btn secondary" data-act="whats-new">🎉 看這版的更新內容</button>
     </div>
-    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.3</p>`;
+    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.4</p>`;
 }

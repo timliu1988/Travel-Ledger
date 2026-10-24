@@ -14,6 +14,8 @@ export const S = {
   filter: 'all',
   tripSearch: false, // 旅程內搜尋框是否打開
   tripQ: '',
+  sortDay: null,     // 正在排序的那一天（日期，或 __none = 未填日期）
+  personF: null,     // 點旅伴卡片篩選：成員 id
   settleView: 'person', // 結算頁：person 個人 | family 家庭（開了家庭分帳才有）
   searchQ: '',
   statsYear: 'all',

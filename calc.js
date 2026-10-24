@@ -31,6 +31,9 @@ export const NO_DECIMAL = ['JPY', 'KRW', 'VND', 'IDR', 'TWD', 'CLP', 'ISK', 'HUF
 export const decimals = (cur) => (NO_DECIMAL.includes(cur) ? 0 : 2);
 const roundCur = (n, cur) => { const p = 10 ** decimals(cur); return Math.round(n * p) / p; };
 
+/** 小費、服務費類的品項（不攤稅） */
+export const isTip = (it) => /\b(tips?|gratuity|service\s*charge)\b|小費|服務費|チップ|サービス料|봉사료/i.test(`${it?.name || ''} ${it?.nameZh || ''}`);
+
 /** 這趟的家庭分組：設定好的家庭 ＋ 沒分到家庭的旅伴（自己一組，id 是「m:成員id」） */
 export function tripGroups(trip) {
   const ids = trip.members ? trip.members.map((m) => m.id) : (trip.memberIds || []);
@@ -66,13 +69,19 @@ export function shareFractions(e, memberIds, groups) {
   }
   const items = (e.items || []).filter((it) => (it.amount || 0) !== 0);
   if (e.splitMode === 'items' && items.length) {
+    // 收據總額和品項合計的差額（稅、折扣）依金額比例攤到品項；小費類品項不攤（美國小費是用含稅後的金額算的）
+    const itemSum = items.reduce((a, it) => a + it.amount, 0);
+    const taxable = items.filter((it) => !isTip(it)).reduce((a, it) => a + it.amount, 0);
+    const diff = e.amount > 0 && taxable ? e.amount - itemSum : 0;
+    const incl = (it) => (isTip(it) || !diff ? it.amount : it.amount + diff * it.amount / taxable);
     const sums = {};
     let tot = 0;
     for (const it of items) {
       const owners = (it.owners || []).filter((o) => valid.has(o));
       const who = owners.length ? owners : memberIds;
-      tot += it.amount;
-      for (const o of who) sums[o] = (sums[o] || 0) + it.amount / who.length;
+      const v = incl(it);
+      tot += v;
+      for (const o of who) sums[o] = (sums[o] || 0) + v / who.length;
     }
     if (tot > 0) {
       const out = {};
@@ -245,7 +254,7 @@ export function calc(data, mode = 'split') {
 
 /** 逐項分帳時，每個人在這張收據的小計（含差額比例分攤），給表單即時顯示用 */
 export function itemBreakdown(items, total, memberIds) {
-  const fr = shareFractions({ splitMode: 'items', items }, memberIds);
+  const fr = shareFractions({ splitMode: 'items', items, amount: total }, memberIds);
   const itemSum = (items || []).reduce((a, it) => a + (it.amount || 0), 0);
   const base = total && total > 0 ? total : itemSum;
   const unassigned = (items || []).filter((it) => (it.amount || 0) !== 0 && !(it.owners || []).length)

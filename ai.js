@@ -3,11 +3,29 @@
 // 需要網路；沒網路時 app.js 會改用手機上的 Tesseract 辨識，之後再補翻譯。
 import { FIREBASE_VERSION } from './store.js';
 
-// 依序嘗試：第一個的免費額度用完時自動換下一個。Google 推出新模型時改這裡即可。
-const MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+// 內建的免費模型（2026/10 依 Google 模型列表更新）。「自動」模式由上往下試，失敗就換下一個。
+// Google 推出新模型時改這裡即可；也可以在 App 的「帳本 → 收據辨識 → 辨識用的模型」自訂模型名稱。
+export const MODELS = [
+  { id: 'gemini-3.8-flash', note: '最新、最聰明' },
+  { id: 'gemini-3.6-flash', note: '上一代 Flash，穩定' },
+  { id: 'gemini-3.5-flash', note: '舊版 Flash' },
+  { id: 'gemini-3.5-flash-lite', note: '輕量、快' },
+  { id: 'gemini-3.1-flash-lite', note: '輕量、舊版' },
+];
+const AUTO = MODELS.map((x) => x.id);
 let firebaseApp = null;
 let aiPromise = null;
 let lastModel = ''; // 最近一次實際用到的模型（顯示在辨識結果上）
+let lastSkipped = []; // 這次辨識前面失敗、被跳過的模型 [{ id, why }]
+
+/** 使用者在設定選的模型：'auto' 或模型 id */
+export function preferredModel() {
+  let v = '';
+  try { v = JSON.parse(localStorage.getItem('tl_aiModel') || '""'); } catch { /* ignore */ }
+  return v && /^[\w.\-]+$/.test(v) ? v : 'auto';
+}
+/** 試的順序：指定的模型先試，失敗再照內建順序 */
+const orderFor = (pick) => (pick && pick !== 'auto' ? [pick, ...AUTO.filter((x) => x !== pick)] : AUTO);
 
 /** 'gemini-3.5-flash-lite' → '3.5 Flash-Lite' */
 export const modelLabel = (id) => String(id || '').replace(/^gemini-/, '').split('-')
@@ -40,23 +58,27 @@ export const shortErr = (e) => String(e?.message || e)
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`timeout：超過 ${ms / 1000} 秒沒回應`)), ms))]);
 
 /** 依序嘗試模型：第一個額度用完（429）或暫時不能用時，換下一個 */
-async function generate(parts) {
-  if (window.__tlAiMock) return window.__tlAiMock(parts);
+async function generate(parts, pick) {
+  lastSkipped = [];
+  if (window.__tlAiMock) { lastModel = pick && pick !== 'auto' ? pick : AUTO[0]; return window.__tlAiMock(parts, lastModel); }
   const { m, ai } = await getAiModule();
   let lastErr;
   const tried = [];
-  for (const name of MODELS) {
+  const order = orderFor(pick || preferredModel());
+  for (const [i, name] of order.entries()) {
     try {
       const model = m.getGenerativeModel(ai, {
         model: name,
         generationConfig: { responseMimeType: 'application/json' }, // Gemini 3 不支援 temperature 等參數，不要加
       });
-      const res = await withTimeout(model.generateContent(parts), 45000);
+      // 前面的模型等 30 秒就換下一個（尖峰時段可能卡很久），最後一個等 45 秒
+      const res = await withTimeout(model.generateContent(parts), i < order.length - 1 ? 30000 : 45000);
       lastModel = name;
       return res.response.text();
     } catch (e) {
       lastErr = e;
       tried.push(`${name}：${shortErr(e)}`);
+      lastSkipped.push({ id: name, why: whyShort(e) });
       console.warn('Gemini', name, e);
       const msg = String(e?.message || e);
       if (!/429|quota|RESOURCE_EXHAUSTED|500|503|UNAVAILABLE|high demand|overloaded|timeout|not found|404/i.test(msg)) break;
@@ -66,6 +88,17 @@ async function generate(parts) {
   err.detail = tried.join('\n');
   throw err;
 }
+
+/** 辨識結果上顯示的一句話：為什麼換模型 */
+function whyShort(e) {
+  const msg = String(e?.message || e);
+  if (/429|quota|RESOURCE_EXHAUSTED/i.test(msg)) return '額度用完';
+  if (/timeout/i.test(msg)) return '太久沒回應';
+  if (/500|503|high demand|overloaded|UNAVAILABLE/i.test(msg)) return '忙碌';
+  if (/404|not found/i.test(msg)) return '找不到這個模型';
+  return '失敗';
+}
+export const skippedNote = () => lastSkipped.map((x) => `${modelLabel(x.id)} ${x.why}`).join('、');
 
 function friendly(e) {
   const msg = String(e?.message || e);
@@ -98,7 +131,8 @@ export async function aiDiagnose() {
       out.push({ model: 'App Check', ok: false, msg: '取得驗證失敗：' + shortErr(e) });
     }
   }
-  for (const name of MODELS) {
+  const pick = preferredModel();
+  for (const name of pick !== 'auto' && !AUTO.includes(pick) ? [pick, ...AUTO] : AUTO) {
     const t = Date.now();
     try {
       const model = mod.m.getGenerativeModel(mod.ai, { model: name });
@@ -123,7 +157,7 @@ const CATS = 'food（餐飲）, transport（交通）, stay（住宿）, shoppin
  * @param {string[]} dataUrls  JPEG data URL
  * @param {string} currency    旅程當地貨幣，供判斷用
  */
-export async function aiReadReceipt(dataUrls, currency) {
+export async function aiReadReceipt(dataUrls, currency, pick) {
   const prompt = `你是記帳助理。以下 ${dataUrls.length} 張照片${dataUrls.length > 1 ? '是「同一張長收據」由上到下分段拍攝的連續片段，相鄰片段可能有重疊的行，重疊的品項只能算一次' : '是一張收據'}。
 這趟旅行的當地貨幣是 ${currency}。請讀出收據內容，只回傳 JSON，格式如下：
 {
@@ -137,8 +171,11 @@ export async function aiReadReceipt(dataUrls, currency) {
     { "name": "品名原文（照收據上的字，半形片假名請轉成全形）",
       "nameZh": "繁體中文（台灣用語）的品名：用台灣慣用的商品或品牌名稱，並在括號內簡短說明是什麼，例如「克潰精α（腸胃藥）」「Calbee 薯條三兄弟（零食）」；看不出是什麼就直譯",
       "qty": 數量（沒寫就 1）,
-      "amount": 這一行的金額小計（數字；折扣、優惠用負數）}
-  ]
+      "amount": 這一行的金額小計，照收據上印的數字（數字；折扣、優惠用負數）,
+      "taxRate": 日本收據才填：這一項的消費稅率 8 或 10（品項旁有「＊」「※」「軽」等軽減稅率記號的是 8，沒有的是 10）；其他國家填 null }
+  ],
+  "taxMode": "日本收據才填：excluded（外稅：品項是稅抜價格，稅另外列「消費税等」）、included（內稅：品項已含稅）或 none（免稅）；其他國家填 null",
+  "taxes": 日本外稅收據才填：每種稅率印出來的稅額，例如 {"8": 37, "10": 0}；收據上有該稅率的品項但沒印稅額就填 0；其他情況填 null
 }
 規則：
 - items 只放商品、服務與折扣；不要放小計、合計、稅額、找零、付款方式、點數、收據編號。
@@ -148,19 +185,22 @@ export async function aiReadReceipt(dataUrls, currency) {
   const parts = [prompt, ...dataUrls.map((u) => ({
     inlineData: { mimeType: 'image/jpeg', data: u.split(',')[1] },
   }))];
-  const r = parseJson(await generate(parts));
+  const r = parseJson(await generate(parts, pick));
   const num = (v) => (typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/[^\d.\-]/g, '')));
   return {
     engine: 'gemini',
-    model: window.__tlAiMock ? 'gemini-mock' : lastModel,
+    model: lastModel,
+    skipped: skippedNote(),
     store: r.store || '',
     storeZh: r.storeZh || '',
     date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date : null,
     currency: /^[A-Z]{3}$/.test(r.currency || '') ? r.currency : null,
     total: isFinite(num(r.total)) && num(r.total) > 0 ? num(r.total) : null,
+    taxMode: ['excluded', 'included', 'none'].includes(r.taxMode) ? r.taxMode : null,
+    taxes: r.taxes && typeof r.taxes === 'object' ? Object.fromEntries(Object.entries(r.taxes).filter(([k, v]) => ['8', '10'].includes(String(k)) && isFinite(num(v))).map(([k, v]) => [k, num(v)])) : null,
     category: ['food', 'transport', 'stay', 'shopping', 'fun', 'other'].includes(r.category) ? r.category : null,
     items: (Array.isArray(r.items) ? r.items : [])
-      .map((it) => ({ name: String(it.name || '').slice(0, 60), nameZh: String(it.nameZh || '').slice(0, 60), qty: num(it.qty) > 0 ? num(it.qty) : 1, amount: num(it.amount) }))
+      .map((it) => ({ name: String(it.name || '').slice(0, 60), nameZh: String(it.nameZh || '').slice(0, 60), qty: num(it.qty) > 0 ? num(it.qty) : 1, amount: num(it.amount), taxRate: [8, 10].includes(Number(it.taxRate)) ? Number(it.taxRate) : null }))
       .filter((it) => isFinite(it.amount) && it.amount !== 0)
       .slice(0, 80),
     text: JSON.stringify(r, null, 1),

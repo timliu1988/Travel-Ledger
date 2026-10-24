@@ -1,7 +1,7 @@
-// 旅伴記帳 v5.3 — 主程式：畫面切換、按鈕事件、啟動
+// 旅伴記帳 v5.4 — 主程式：畫面切換、按鈕事件、啟動
 import { createStore, uid, receiptKey } from './store.js';
 import { calc } from './calc.js';
-import { aiReady, aiTranslateNames, aiDiagnose } from './ai.js';
+import { aiReady, aiTranslateNames, aiDiagnose, modelLabel } from './ai.js';
 import { fmtRange } from './calendar.js';
 import {
   S, hooks, render, myLedgers, rememberLedger, forgetLedger, getMe, setMe, member, memberName, ledgerMembers, tripData, allTrips,
@@ -17,6 +17,7 @@ import {
 import { exportLedger, importLedger, exportCsv } from './backup.js';
 import { initUpdates, checkNow } from './update.js';
 import { openMoveTrip } from './move.js';
+import { showWhatsNew } from './whatsnew.js';
 import { applyTheme, setTheme, setMode } from './theme.js';
 
 /* ================= 畫面 ================= */
@@ -65,7 +66,7 @@ function draw() {
         <span class="me-btn">${avatar(me, 34)}</span>
       </header>
       <main>${body}</main>
-      ${S.tab === 'list' ? '<button class="fab" data-act="add-expense" aria-label="新增支出">＋</button>' : ''}
+      ${S.tab === 'list' && !S.sortDay ? '<button class="fab" data-act="add-expense" aria-label="新增支出">＋</button>' : ''}
       <nav class="tabs">${tabs.map(([k, i, n]) => `<button data-act="tab" data-tab="${k}" class="${S.tab === k ? 'on' : ''}"><span class="i">${i}</span>${n}</button>`).join('')}</nav>`;
   } else {
     const body = { trips: tripsTab, search: searchTab, stats: statsTab, settings: ledgerSettingsTab }[S.ltab]();
@@ -131,6 +132,8 @@ function openTrip(tid, then) {
   S.filter = 'all';
   S.tripSearch = false;
   S.tripQ = '';
+  S.sortDay = null;
+  S.personF = null;
   closeAllSheets();
   render();
   window.scrollTo(0, 0);
@@ -470,8 +473,20 @@ document.addEventListener('click', async (ev) => {
       }
       break;
     }
-    case 'tab': S.tab = el.dataset.tab; render(); window.scrollTo(0, 0); break;
-    case 'filter': S.filter = el.dataset.filter; render(); break;
+    case 'tab': S.tab = el.dataset.tab; S.sortDay = null; render(); window.scrollTo(0, 0); break;
+    case 'filter': S.filter = el.dataset.filter; S.sortDay = null; render(); break;
+    case 'person-filter': if (S.sortDay) return; S.personF = S.personF === id ? null : id; render(); break;
+    case 'sort-day': S.sortDay = el.dataset.day; render(); break;
+    case 'sort-done': {
+      // 由上到下：sortKey 由大到小；順序沒變就不寫入
+      const list = el.closest('.day')?.nextElementSibling;
+      const now = list ? [...list.querySelectorAll('[data-sortrow]')].map((x) => x.dataset.id) : [];
+      const changed = list?.dataset.orig && list.dataset.orig !== now.join(',');
+      if (changed) { const base = Date.now(); now.forEach((eid, k) => store.updateItem(S.tripId, 'expenses', eid, { sortKey: base - k })); }
+      S.sortDay = null; render();
+      if (changed) toast('已更新排序');
+      break;
+    }
     case 'trip-search':
       S.tripSearch = !S.tripSearch;
       if (!S.tripSearch) S.tripQ = '';
@@ -529,6 +544,7 @@ document.addEventListener('click', async (ev) => {
         <p class="small muted">${list.some((x) => x.ok) ? '有可以用的模型，收據辨識會自動用它。' : '全部失敗。可以把這個畫面截圖給我，看錯誤訊息判斷是哪裡沒設定好。'}</p>`;
       break;
     }
+    case 'whats-new': showWhatsNew(true); break;
     case 'check-update': {
       toast('檢查中…');
       const r = await checkNow();
@@ -539,6 +555,25 @@ document.addEventListener('click', async (ev) => {
     case 'set-mode': setMode(el.value); render(); break;
     case 'move-trip': closeAllSheets(); openMoveTrip(id, 'move'); break;
     case 'copy-trip': closeAllSheets(); openMoveTrip(id, 'copy'); break;
+  }
+});
+
+// 辨識模型的選擇（設定頁）
+document.addEventListener('change', (ev) => {
+  if (ev.target.id === 'ai-model') {
+    const v = ev.target.value;
+    const inp = $('#ai-custom');
+    if (v === '__custom') { if (inp) { inp.hidden = false; inp.focus(); } return; }
+    if (inp) inp.hidden = true;
+    ls.set('tl_aiModel', v);
+    toast(v === 'auto' ? '辨識模型：自動' : `辨識模型：${modelLabel(v)}（失敗時自動換下一個）`);
+  }
+  if (ev.target.id === 'ai-custom') {
+    const v = ev.target.value.trim().toLowerCase();
+    if (!v) { ls.set('tl_aiModel', 'auto'); toast('辨識模型：自動'); return; }
+    if (!/^[\w.\-]+$/.test(v)) { toast('模型名稱只能有英文、數字、點和減號'); return; }
+    ls.set('tl_aiModel', v);
+    toast(`辨識模型：${v}（失敗時自動換下一個）`);
   }
 });
 
@@ -587,4 +622,34 @@ document.addEventListener('keydown', (ev) => {
   const target = list.find((l) => l.id === last) || list[0];
   if (target) openLedger(target.id); else render();
   if (join && !list.some((l) => l.id === join)) openJoin(join);
+  else setTimeout(() => showWhatsNew(), 600); // 更新後第一次打開：顯示這次的更新內容
 })();
+
+/* 每日排序：按住 ☰ 上下拖曳（只能在同一天裡移動） */
+{
+  let drag = null;
+  document.addEventListener('pointerdown', (ev) => {
+    const h = ev.target.closest('.sorting-day .drag-h');
+    if (!h) return;
+    ev.preventDefault();
+    const row = h.closest('[data-sortrow]');
+    const list = row.parentElement;
+    if (!list.dataset.orig) list.dataset.orig = [...list.querySelectorAll('[data-sortrow]')].map((x) => x.dataset.id).join(',');
+    drag = { row, list, y0: ev.clientY, h: row.offsetHeight, id: ev.pointerId };
+    row.classList.add('dragging');
+    try { h.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
+  });
+  document.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    ev.preventDefault();
+    const sibs = [...drag.list.children];
+    const i = sibs.indexOf(drag.row);
+    const dy = ev.clientY - drag.y0;
+    if (dy > drag.h * 0.55 && sibs[i + 1]) { drag.list.insertBefore(sibs[i + 1], drag.row); drag.y0 += sibs[i + 1].offsetHeight; }
+    else if (dy < -drag.h * 0.55 && sibs[i - 1]) { drag.list.insertBefore(drag.row, sibs[i - 1]); drag.y0 -= sibs[i - 1].offsetHeight; }
+    drag.row.style.transform = `translateY(${ev.clientY - drag.y0}px)`;
+  }, { passive: false });
+  const end = () => { if (!drag) return; drag.row.classList.remove('dragging'); drag.row.style.transform = ''; drag = null; };
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+}
