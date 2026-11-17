@@ -716,9 +716,19 @@ export function openExpenseForm(id) {
       let r = null, notice = '', noticeDetail = '';
       try {
         if ((pick || ls.get('tl_ocrEngine', 'auto') === 'auto') && aiReady()) {
-          st.innerHTML = `<span>Gemini${pick ? ` ${esc(modelLabel(pick))}` : ''} 辨識與翻譯中${receipts.length > 1 ? `（${receipts.length} 段合併）` : ''}…</span><span class="bar indet"><i></i></span>`;
+          st.innerHTML = `<span>Gemini 辨識與翻譯中${receipts.length > 1 ? `（${receipts.length} 段合併）` : ''}…</span><span class="bar indet"><i></i></span>`;
+          // 等待畫面：顯示目前用哪個模型、等了幾秒；後面還有模型可以換時，給「改用其他模型」按鈕
+          const ctl = {
+            onStatus: (x) => {
+              if (x.phase === 'wait') { st.innerHTML = `<span>${esc(modelLabel(x.model))} 碰到每分鐘上限，${x.left} 秒後再試…</span><span class="bar indet"><i></i></span>`; return; }
+              st.innerHTML = `<div class="ocr-wait"><span>${esc(modelLabel(x.model))} 辨識中${receipts.length > 1 ? `（${receipts.length} 段合併）` : ''}… 已等 <b data-sec>0</b> 秒</span>
+                ${x.hasNext ? '<button type="button" class="btn small secondary" data-ocr-skip>改用其他模型</button>' : ''}</div><span class="bar indet"><i></i></span>`;
+              st.querySelector('[data-ocr-skip]')?.addEventListener('click', () => ctl.skip?.());
+            },
+            onTick: (_, sec) => { const b = st.querySelector('[data-sec]'); if (b) b.textContent = sec; },
+          };
           try {
-            r = await aiReadReceipt(receipts.map((x) => x.url), trip.currency, pick);
+            r = await aiReadReceipt(receipts.map((x) => x.url), trip.currency, pick, ctl);
             r.items = r.items.map((it) => ({ ...it, zhSource: 'ai' }));
           } catch (err) {
             console.warn(err);

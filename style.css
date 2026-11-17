@@ -609,3 +609,9 @@ header.top .search-btn.on { background: var(--brand-soft); }
 .wn-row:last-child { border-bottom: 0; }
 .wn-ic { font-size: 22px; width: 32px; text-align: center; flex: none; }
 .wn-row p { margin: 3px 0 0; }
+
+/* v5.5 辨識等待 */
+.ocr-wait { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; width: 100%; }
+.ocr-wait b { font-variant-numeric: tabular-nums; }
+.ai-use { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 13px; margin: 6px 0 10px; }
+.ai-use .warn { color: var(--warn); }

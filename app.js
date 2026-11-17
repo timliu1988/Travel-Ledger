@@ -1,4 +1,4 @@
-// 旅伴記帳 v5.4 — 主程式：畫面切換、按鈕事件、啟動
+// 旅伴記帳 v5.5 — 主程式：畫面切換、按鈕事件、啟動
 import { createStore, uid, receiptKey } from './store.js';
 import { calc } from './calc.js';
 import { aiReady, aiTranslateNames, aiDiagnose, modelLabel } from './ai.js';

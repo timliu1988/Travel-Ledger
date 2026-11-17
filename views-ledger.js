@@ -4,7 +4,7 @@ import { calc, ledgerStats } from './calc.js';
 import { searchAll } from './search.js';
 import { appBuild } from './update.js';
 import { THEMES, MODES, getTheme, getMode } from './theme.js';
-import { MODELS, preferredModel, modelLabel } from './ai.js';
+import { MODELS, preferredModel, modelLabel, usageToday, skipReason } from './ai.js';
 import { fmtRange, ymd } from './calendar.js';
 import {
   CATS, catOf, flag, countryName, esc, fmt, twd, money, moneyMulti, rateStr, dayLabel, avatar, ls,
@@ -214,7 +214,7 @@ export function ledgerSettingsTab() {
         <label class="opt"><input type="radio" name="ocrEngine" value="auto" data-act="ocr-engine" ${ls.get('tl_ocrEngine', 'auto') === 'auto' ? 'checked' : ''}><span>Gemini 優先</span></label>
         <label class="opt"><input type="radio" name="ocrEngine" value="local" data-act="ocr-engine" ${ls.get('tl_ocrEngine', 'auto') === 'local' ? 'checked' : ''}><span>只用手機辨識</span></label>
       </div>
-      ${S.store.mode === 'firebase' ? (() => {
+      ${S.store.mode === 'firebase' || window.__tlAiMock ? (() => {
         const pick = preferredModel();
         const custom = pick !== 'auto' && !MODELS.some((x) => x.id === pick);
         return `<div class="field" style="margin-bottom:10px"><label for="ai-model">辨識用的模型</label>
@@ -224,7 +224,16 @@ export function ledgerSettingsTab() {
             <option value="__custom" ${custom ? 'selected' : ''}>自訂模型名稱…</option>
           </select>
           <input id="ai-custom" placeholder="例如 gemini-4.5-flash" value="${custom ? esc(pick) : ''}" autocapitalize="off" autocorrect="off" spellcheck="false" style="margin-top:8px" ${custom ? '' : 'hidden'}>
-          <div class="hint">指定的模型失敗、太忙或額度用完時，會自動換下一個。改完可以按下面的「測試 Gemini 連線」確認。</div></div>`;
+          <div class="hint">指定的模型最多等 90 秒；失敗、太忙或額度用完時，會自動換下一個。改完可以按下面的「測試 Gemini 連線」確認（只測一個模型，省額度）。</div></div>
+        ${(() => {
+          const use = usageToday();
+          return `<details class="field"><summary class="small muted">這支手機今天用了多少額度</summary>
+            <div class="ai-use">${MODELS.map((x) => {
+              const n = use[x.id] || 0, why = skipReason(x.id);
+              return `<span>${esc(modelLabel(x.id))}${why ? ` <small class="warn">暫時跳過：${esc(why)}</small>` : ''}</span><span class="${x.rpd && n >= x.rpd ? 'warn' : ''}">${n} / ${x.rpd ?? '—'}</span>`;
+            }).join('')}</div>
+            <p class="small muted" style="margin:0">免費額度每天台灣時間下午 3～4 點重置（美國太平洋時間午夜）。這裡只算這支手機送出的次數，旅伴用的不會算進來；實際用量以 Google AI Studio 的 Rate limit 頁面為準。</p></details>`;
+        })()}`;
       })() : ''}
       <label class="switch-row"><span>拍完第一張自動辨識</span>
         <input type="checkbox" data-act="toggle-autoocr" ${ls.get('tl_autoOcr', true) ? 'checked' : ''}></label>
@@ -233,7 +242,7 @@ export function ledgerSettingsTab() {
       <p class="small muted">${S.store.mode === 'firebase'
         ? 'Gemini 需要網路，會同時把品名翻成中文；沒網路時自動改用手機辨識，品名等連上網路再補翻譯。'
         : '目前是本機模式，Gemini 要設定 Firebase 後才能用，現在只會用手機辨識。'}</p>
-      ${S.store.mode === 'firebase' ? '<button class="btn secondary" data-act="ai-test">🔍 測試 Gemini 連線</button><div id="ai-test-out"></div>' : ''}
+      ${S.store.mode === 'firebase' || window.__tlAiMock ? '<button class="btn secondary" data-act="ai-test">🔍 測試 Gemini 連線</button><div id="ai-test-out"></div>' : ''}
     </div>
     <div class="card">
       <h3>備份</h3>
@@ -261,10 +270,10 @@ export function ledgerSettingsTab() {
     </div>
     <div class="card">
       <h3>版本</h3>
-      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.4')}</span></div>
+      <div class="kv"><span class="k">目前版本</span><span class="v" id="app-build">${esc(appBuild.value || 'v5.5')}</span></div>
       <p class="small muted">App 會在背景自動檢查新版，有新版時畫面下方會出現「點此更新」。</p>
       <button class="btn secondary" data-act="check-update">🔄 檢查更新</button>
       <button class="btn secondary" data-act="whats-new">🎉 看這版的更新內容</button>
     </div>
-    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.4</p>`;
+    <p class="small muted center">${S.store.mode === 'firebase' ? `☁️ 雲端同步${S.store.appCheck ? ' · 🛡️ App Check' : ''}` : '📱 本機模式'} · v5.5</p>`;
 }
